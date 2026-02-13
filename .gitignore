@@ -1,0 +1,35 @@
+# Environment
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Database
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Database files
+*.db
+
+# Reports and position files (generated output)
+live/report_*.txt
+live/report_*.json
+live/positions_*.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Images (generated analysis output)
+*.png

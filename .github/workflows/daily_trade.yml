@@ -1,0 +1,43 @@
+name: Daily Regime Trade
+
+on:
+  schedule:
+    # 10:00 AM ET (15:00 UTC) on weekdays
+    - cron: '0 15 * * 1-5'
+  workflow_dispatch: # Manual trigger for testing
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run live regime trader
+        env:
+          ROBINHOOD_USERNAME: ${{ secrets.ROBINHOOD_USERNAME }}
+          ROBINHOOD_PASSWORD: ${{ secrets.ROBINHOOD_PASSWORD }}
+          ROBINHOOD_TOTP_SECRET: ${{ secrets.ROBINHOOD_TOTP_SECRET }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: python live/live_regime_trader.py --live --no-confirm --state-file live/trader_state.json
+
+      - name: Commit updated state file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add live/trader_state.json
+          git diff --cached --quiet || git commit -m "Update trader state [skip ci]"
+          git push
