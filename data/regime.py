@@ -14,7 +14,16 @@ Key insight: Rate of CHANGE in indicators is more predictive than levels.
 
 import numpy as np
 import pandas as pd
-from scipy.stats import zscore
+
+
+def zscore(a):
+    """Compute z-scores (replaces scipy.stats.zscore to avoid slow import)."""
+    a = np.asarray(a, dtype=float)
+    mean = np.nanmean(a)
+    std = np.nanstd(a, ddof=0)
+    if std == 0:
+        return np.zeros_like(a)
+    return (a - mean) / std
 
 # =============================
 # Utility Functions
