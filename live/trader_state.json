@@ -1,0 +1,59 @@
+{
+  "bear_score": 48.31851592335042,
+  "allocation": [
+    1.0,
+    0.0
+  ],
+  "risk_level": "WATCH",
+  "positions": {
+    "NVDA": {
+      "shares": 52.0,
+      "avg_cost": 189.49
+    },
+    "ANET": {
+      "shares": 70.0,
+      "avg_cost": 140.949
+    },
+    "MSFT": {
+      "shares": 23.0,
+      "avg_cost": 401.9
+    },
+    "MU": {
+      "shares": 22.0,
+      "avg_cost": 426.22
+    },
+    "ADBE": {
+      "shares": 34.0,
+      "avg_cost": 260.68
+    },
+    "GOOGL": {
+      "shares": 28.0,
+      "avg_cost": 304.22
+    },
+    "GOOG": {
+      "shares": 28.0,
+      "avg_cost": 304.905
+    },
+    "LVS": {
+      "shares": 145.0,
+      "avg_cost": 59.23
+    },
+    "NFLX": {
+      "shares": 104.0,
+      "avg_cost": 77.825
+    },
+    "V": {
+      "shares": 25.0,
+      "avg_cost": 320.1175
+    },
+    "META": {
+      "shares": 12.0,
+      "avg_cost": 639.67
+    },
+    "TPR": {
+      "shares": 52.0,
+      "avg_cost": 155.1111
+    }
+  },
+  "timestamp": "2026-02-18T16:41:51.752783"
+}
