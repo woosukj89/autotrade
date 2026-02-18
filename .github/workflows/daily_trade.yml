@@ -6,6 +6,9 @@ on:
     - cron: '0 15 * * 1-5'
   workflow_dispatch: # Manual trigger for testing
 
+permissions:
+  contents: write
+
 jobs:
   trade:
     runs-on: ubuntu-latest
@@ -23,16 +26,43 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Restore Robinhood session
+        env:
+          ROBINHOOD_SESSION: ${{ secrets.ROBINHOOD_SESSION }}
+        run: |
+          if [ -n "$ROBINHOOD_SESSION" ]; then
+            mkdir -p .session
+            echo "$ROBINHOOD_SESSION" | base64 -d > .session/robinhood.pickle
+            echo "Session pickle restored."
+          else
+            echo "WARNING: ROBINHOOD_SESSION secret is not set."
+            echo "Run 'python scripts/bootstrap_session.py' locally to create one."
+            exit 1
+          fi
+
       - name: Run live regime trader
         env:
           ROBINHOOD_USERNAME: ${{ secrets.ROBINHOOD_USERNAME }}
           ROBINHOOD_PASSWORD: ${{ secrets.ROBINHOOD_PASSWORD }}
-          ROBINHOOD_TOTP_SECRET: ${{ secrets.ROBINHOOD_TOTP_SECRET }}
+          ROBINHOOD_PICKLE_PATH: .session
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: python live/live_regime_trader.py --live --no-confirm --state-file live/trader_state.json
+
+      - name: Save updated session
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -f .session/robinhood.pickle ]; then
+            NEW_SESSION=$(base64 -w 0 .session/robinhood.pickle)
+            gh secret set ROBINHOOD_SESSION --body "$NEW_SESSION"
+            echo "Session pickle updated in GitHub secrets."
+          else
+            echo "No pickle file found to save."
+          fi
 
       - name: Commit updated state file
         run: |

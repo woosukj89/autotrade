@@ -76,6 +76,7 @@ class RobinhoodConnector(ExchangeConnector):
         password: str = None,
         totp_secret: str = None,
         mfa_code: str = None,
+        pickle_path: str = None,
     ):
         """
         Initialize Robinhood connector.
@@ -86,11 +87,14 @@ class RobinhoodConnector(ExchangeConnector):
             totp_secret: 2FA TOTP secret for auto-generating MFA codes.
                          If None, uses ROBINHOOD_TOTP_SECRET env var.
             mfa_code: Manual MFA code (if not using TOTP secret).
+            pickle_path: Directory to store/load session pickle file.
+                         If None, uses ROBINHOOD_PICKLE_PATH env var or ~/.tokens/.
         """
         self.username = username or os.environ.get('ROBINHOOD_USERNAME')
         self.password = password or os.environ.get('ROBINHOOD_PASSWORD')
         self.totp_secret = totp_secret or os.environ.get('ROBINHOOD_TOTP_SECRET')
         self.mfa_code = mfa_code
+        self.pickle_path = pickle_path or os.environ.get('ROBINHOOD_PICKLE_PATH', '')
 
         self._connected = False
         self._rs = None  # robin_stocks module
@@ -118,13 +122,17 @@ class RobinhoodConnector(ExchangeConnector):
                     print("Warning: pyotp not installed. Cannot generate 2FA code.")
                     print("Install with: pip install pyotp")
 
-            # Login
-            login_result = rs.login(
-                username=self.username,
-                password=self.password,
-                mfa_code=mfa_code,
-                store_session=True,
-            )
+            # Login with session persistence
+            login_kwargs = {
+                'username': self.username,
+                'password': self.password,
+                'mfa_code': mfa_code,
+                'store_session': True,
+            }
+            if self.pickle_path:
+                login_kwargs['pickle_path'] = self.pickle_path
+
+            login_result = rs.login(**login_kwargs)
 
             if login_result:
                 self._connected = True
@@ -571,6 +579,7 @@ def create_robinhood_connector(
     username: str = None,
     password: str = None,
     totp_secret: str = None,
+    pickle_path: str = None,
 ) -> RobinhoodConnector:
     """
     Factory function to create a Robinhood connector.
@@ -579,6 +588,7 @@ def create_robinhood_connector(
         - ROBINHOOD_USERNAME
         - ROBINHOOD_PASSWORD
         - ROBINHOOD_TOTP_SECRET (optional, for 2FA)
+        - ROBINHOOD_PICKLE_PATH (optional, directory for session pickle)
 
     Example:
         # Using environment variables
@@ -597,4 +607,5 @@ def create_robinhood_connector(
         username=username,
         password=password,
         totp_secret=totp_secret,
+        pickle_path=pickle_path,
     )
