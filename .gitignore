@@ -27,6 +27,11 @@ live/report_*.txt
 live/report_*.json
 live/positions_*.txt
 
+# Session files
+.session/
+session.txt
+*.pickle
+
 # OS
 .DS_Store
 Thumbs.db

@@ -719,7 +719,7 @@ class LiveRegimeTrader:
             print(f"[LiveTrader] Warning: could not load state file: {e}")
             return None
 
-    def _save_state(self) -> None:
+    def _save_state(self, last_rebalance: Optional[str] = None) -> None:
         """Save current trader state to JSON file."""
         if not self.state_file:
             return
@@ -732,6 +732,7 @@ class LiveRegimeTrader:
                 for ticker, pos in self._last_target_positions.items()
             } if hasattr(self, '_last_target_positions') else {},
             'timestamp': datetime.now().isoformat(),
+            'last_rebalance': last_rebalance,
         }
         try:
             os.makedirs(os.path.dirname(os.path.abspath(self.state_file)), exist_ok=True)
@@ -753,6 +754,19 @@ class LiveRegimeTrader:
             abs(self._allocation[0] - prev_alloc[0]) > tolerance
             or abs(self._allocation[1] - prev_alloc[1]) > tolerance
         )
+
+    def _should_monthly_rebalance(self, previous_state: Optional[Dict]) -> bool:
+        """Return True if 30+ days have elapsed since the last rebalance."""
+        if previous_state is None:
+            return True
+        last_rebalance_str = previous_state.get('last_rebalance')
+        if last_rebalance_str is None:
+            return True
+        try:
+            last_rebalance = datetime.fromisoformat(last_rebalance_str)
+            return (datetime.now() - last_rebalance).days >= 30
+        except (ValueError, TypeError):
+            return True
 
     def get_current_portfolio(self) -> Tuple[AccountInfo, Portfolio, float]:
         """
@@ -1281,26 +1295,34 @@ class LiveRegimeTrader:
             # Check if allocation changed from previous run
             previous_state = self._load_state()
             alloc_changed = self._allocation_changed(previous_state)
+            monthly_rebalance_due = self._should_monthly_rebalance(previous_state)
             regime_changed = self._bear_score > 55
 
             # Store target positions for state saving
             self._last_target_positions = target_portfolio.positions
 
-            # Step 5: Calculate and execute trades (only if allocation changed)
+            # Step 5: Calculate and execute trades
+            # Trigger when allocation changed OR monthly rebalance is due
             actions = []
-            if alloc_changed:
-                print("\n[Step 5/6] Allocation changed - calculating and executing trades...")
+            rebalanced_now = False
+            if alloc_changed or monthly_rebalance_due:
+                if alloc_changed:
+                    step_reason = "Allocation changed"
+                else:
+                    step_reason = "Monthly rebalance due"
+                print(f"\n[Step 5/6] {step_reason} - calculating and executing trades...")
                 trades = self.calculate_trades(portfolio, target_portfolio, total_value)
 
                 if trades:
                     actions = self.execute_trades(trades)
+                    rebalanced_now = True
 
                 # Refresh portfolio after trades
                 if actions:
                     account, portfolio, total_value = self.get_current_portfolio()
             else:
                 prev_alloc = previous_state.get('allocation', [0, 0]) if previous_state else [0, 0]
-                print(f"\n[Step 5/6] Allocation unchanged ({prev_alloc[0]*100:.0f}%/{prev_alloc[1]*100:.0f}%) - skipping trades, no rebalancing needed.")
+                print(f"\n[Step 5/6] Allocation unchanged ({prev_alloc[0]*100:.0f}%/{prev_alloc[1]*100:.0f}%) and monthly rebalance not yet due - skipping trades.")
 
             # Step 6: Build, save, and send report (ALWAYS)
             print("\n[Step 6/6] Building and saving report...")
@@ -1314,8 +1336,10 @@ class LiveRegimeTrader:
             # Always send email report
             self.send_report(report)
 
-            # Save state for next run
-            self._save_state()
+            # Save state; propagate last_rebalance timestamp
+            prev_last_rebalance = previous_state.get('last_rebalance') if previous_state else None
+            new_last_rebalance = datetime.now().isoformat() if rebalanced_now else prev_last_rebalance
+            self._save_state(last_rebalance=new_last_rebalance)
 
             # Print summary
             print("\n" + "=" * 70)
