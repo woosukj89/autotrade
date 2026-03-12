@@ -1,60 +1,60 @@
 {
-  "bear_score": 56.372103013275044,
+  "bear_score": 56.064191997458245,
   "allocation": [
     1.0,
     0.0
   ],
   "risk_level": "CAUTION",
   "positions": {
-    "NVDA": {
-      "shares": 54.0,
-      "avg_cost": 183.857
-    },
     "LRCX": {
       "shares": 47.0,
-      "avg_cost": 211.43
+      "avg_cost": 211.83
     },
     "ANET": {
       "shares": 73.0,
-      "avg_cost": 135.61
+      "avg_cost": 135.97
     },
-    "MU": {
-      "shares": 23.0,
-      "avg_cost": 403.015
+    "NVDA": {
+      "shares": 54.0,
+      "avg_cost": 184.565
     },
     "MRVL": {
       "shares": 107.0,
-      "avg_cost": 89.185
+      "avg_cost": 89.325
+    },
+    "MSFT": {
+      "shares": 23.0,
+      "avg_cost": 403.87
     },
     "GOOG": {
       "shares": 28.0,
-      "avg_cost": 302.75
+      "avg_cost": 302.85
     },
     "GOOGL": {
       "shares": 28.0,
-      "avg_cost": 303.28
+      "avg_cost": 303.52
     },
     "LVS": {
       "shares": 162.0,
-      "avg_cost": 53.3
+      "avg_cost": 53.42
+    },
+    "NFLX": {
+      "shares": 87.0,
+      "avg_cost": 94.2202
     },
     "V": {
       "shares": 26.0,
-      "avg_cost": 308.03
+      "avg_cost": 307.75
     },
     "META": {
       "shares": 12.0,
-      "avg_cost": 642.45
+      "avg_cost": 641.83
     },
-    "NFLX": {
-      "shares": 86.0,
-      "avg_cost": 94.2099
-    },
-    "TPR": {
-      "shares": 56.0,
-      "avg_cost": 144.04
+    "PGR": {
+      "shares": 40.0,
+      "avg_cost": 203.56
     }
   },
-  "timestamp": "2026-03-12T15:55:06.388433",
+  "timestamp": "2026-03-12T16:04:17.219398",
   "last_rebalance": "2026-03-06T15:44:46.804310"
 }
