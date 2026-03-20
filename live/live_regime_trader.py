@@ -727,6 +727,7 @@ class LiveRegimeTrader:
             'bear_score': self._bear_score,
             'allocation': list(self._allocation),
             'risk_level': self._risk_level,
+            'consecutive_high_scores': self._strategy._consecutive_high_scores if self._strategy else 0,
             'positions': {
                 ticker: {'shares': pos.shares, 'avg_cost': pos.avg_cost}
                 for ticker, pos in self._last_target_positions.items()
@@ -1036,9 +1037,38 @@ class LiveRegimeTrader:
                 'pnl_pct': pnl_pct,
             }
 
-        # Determine rebalance reason
+        # Determine rebalance reason and hold explanation
+        hold_reason = None
         if not actions:
-            reason = "No rebalancing needed - portfolio already aligned with target allocation."
+            if self._bear_score > 55 and not regime_changed:
+                # Score is elevated but defensive rotation was blocked — explain why
+                parts = []
+                if self._strategy is not None:
+                    consec = self._strategy._consecutive_high_scores
+                    momentum = self._strategy._momentum_confirmed
+                    if self._bear_score >= 60 and consec < 2:
+                        parts.append(
+                            f"bear score ≥60 for only {consec} of 2 required consecutive "
+                            f"weekly checks (score must sustain above 60 for two weeks)"
+                        )
+                    if not momentum:
+                        parts.append(
+                            "price is still above its 50-day moving average "
+                            "(momentum not yet confirmed weak)"
+                        )
+                if parts:
+                    hold_reason = "Defensive rotation not triggered: " + "; ".join(parts) + "."
+                else:
+                    hold_reason = (
+                        "Bear score elevated but allocation change is below "
+                        "the 10% minimum threshold."
+                    )
+                reason = (
+                    f"Bear score is {self._bear_score:.1f} ({self._risk_level}) but "
+                    f"no allocation change was made. {hold_reason}"
+                )
+            else:
+                reason = "Portfolio already aligned with target allocation — no trades needed."
         else:
             reason = (f"Rebalanced to {self._allocation[0]*100:.0f}% aggressive / "
                      f"{self._allocation[1]*100:.0f}% defensive based on bear score of "
@@ -1057,6 +1087,7 @@ class LiveRegimeTrader:
             positions=positions_dict,
             rebalance_reason=reason,
             regime_change=regime_changed,
+            hold_reason=hold_reason,
         )
 
         return report
@@ -1288,15 +1319,25 @@ class LiveRegimeTrader:
             print("\n[Step 3/6] Fetching current portfolio...")
             account, portfolio, total_value = self.get_current_portfolio()
 
+            # Load previous state before running strategy so we can restore
+            # _consecutive_high_scores — this counter must persist across daily
+            # GitHub Actions runs for the defensive-rotation gate to work correctly.
+            previous_state = self._load_state()
+            strategy = self._get_strategy()
+            if previous_state and 'consecutive_high_scores' in previous_state:
+                strategy._consecutive_high_scores = previous_state['consecutive_high_scores']
+                print(f"[LiveTrader] Restored consecutive_high_scores="
+                      f"{strategy._consecutive_high_scores} from state")
+
             # Step 4: Run strategy to get target portfolio
             print("\n[Step 4/6] Running strategy...")
             target_portfolio = self.run_strategy(portfolio)
 
             # Check if allocation changed from previous run
-            previous_state = self._load_state()
             alloc_changed = self._allocation_changed(previous_state)
             monthly_rebalance_due = self._should_monthly_rebalance(previous_state)
-            regime_changed = self._bear_score > 55
+            # True only when the portfolio allocation band actually shifts
+            regime_changed = alloc_changed
 
             # Store target positions for state saving
             self._last_target_positions = target_portfolio.positions

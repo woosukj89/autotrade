@@ -56,6 +56,7 @@ class RebalanceReport:
     # Reasons
     rebalance_reason: str
     regime_change: bool
+    hold_reason: Optional[str] = None  # Why defensive rotation was blocked despite elevated score
 
 
 class EmailNotifier:
@@ -290,12 +291,19 @@ class EmailNotifier:
             </tr>
             """
 
-        # Regime change indicator
+        # Regime / hold banner
         regime_change_html = ""
         if report.regime_change:
             regime_change_html = """
+            <div style="background: #d4edda; border: 1px solid #28a745; padding: 10px; margin: 10px 0; border-radius: 4px;">
+                <strong>Allocation Adjusted</strong> - Portfolio rebalanced to reflect the new market regime.
+            </div>
+            """
+        elif report.hold_reason:
+            regime_change_html = f"""
             <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin: 10px 0; border-radius: 4px;">
-                <strong>Regime Change Detected</strong> - Allocation has been adjusted.
+                <strong>Elevated Risk Detected &mdash; No Position Change</strong><br>
+                <span style="font-size: 13px; color: #555;">{report.hold_reason}</span>
             </div>
             """
 
