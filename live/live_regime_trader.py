@@ -1047,8 +1047,8 @@ class LiveRegimeTrader:
                     momentum = self._strategy._momentum_confirmed
                     if self._bear_score >= 60 and consec < 2:
                         parts.append(
-                            f"bear score ≥60 in only {consec} of the past 2 weekly readings "
-                            f"(both this week and last week must be ≥60)"
+                            f"bear score ≥60 in only {consec} of the past 2 monthly readings "
+                            f"(score must be ≥60 both now and ~1 month ago)"
                         )
                     if not momentum:
                         parts.append(
