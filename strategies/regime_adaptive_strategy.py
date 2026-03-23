@@ -253,11 +253,27 @@ class RegimeAdaptiveStrategy(Strategy):
         else:
             self._momentum_confirmed = False
 
-        # Track consecutive high scores for persistence
-        if bear_score >= 60:
-            self._consecutive_high_scores += 1
-        else:
-            self._consecutive_high_scores = 0
+        # Check persistence using historical data rather than a run counter.
+        # Compute the bear score for 1 week ago by dropping the last weekly
+        # data point from each input series. This is robust to job failures
+        # or restarts — no saved counter needed.
+        try:
+            inputs_1w_ago = {
+                k: v.iloc[:-1]
+                for k, v in self._regime_inputs.items()
+                if len(v) > 2
+            }
+            if inputs_1w_ago:
+                bear_score_1w_ago, _ = compute_bear_score(inputs_1w_ago, method="macro_momentum")
+            else:
+                bear_score_1w_ago = 0.0
+        except Exception:
+            bear_score_1w_ago = 0.0
+        self._consecutive_high_scores = sum(
+            1 for s in [bear_score_1w_ago, bear_score] if s >= 60
+        )
+        print(f"  Persistence: now={bear_score:.1f}, 1w_ago={bear_score_1w_ago:.1f} "
+              f"-> {self._consecutive_high_scores}/2 weekly readings ≥60")
 
         # ===== ASYMMETRIC SWITCHING =====
         # Going defensive: Require high score + momentum confirmation + persistence

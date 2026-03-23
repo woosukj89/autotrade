@@ -727,7 +727,6 @@ class LiveRegimeTrader:
             'bear_score': self._bear_score,
             'allocation': list(self._allocation),
             'risk_level': self._risk_level,
-            'consecutive_high_scores': self._strategy._consecutive_high_scores if self._strategy else 0,
             'positions': {
                 ticker: {'shares': pos.shares, 'avg_cost': pos.avg_cost}
                 for ticker, pos in self._last_target_positions.items()
@@ -1048,8 +1047,8 @@ class LiveRegimeTrader:
                     momentum = self._strategy._momentum_confirmed
                     if self._bear_score >= 60 and consec < 2:
                         parts.append(
-                            f"bear score ≥60 for only {consec} of 2 required consecutive "
-                            f"weekly checks (score must sustain above 60 for two weeks)"
+                            f"bear score ≥60 in only {consec} of the past 2 weekly readings "
+                            f"(both this week and last week must be ≥60)"
                         )
                     if not momentum:
                         parts.append(
@@ -1319,15 +1318,11 @@ class LiveRegimeTrader:
             print("\n[Step 3/6] Fetching current portfolio...")
             account, portfolio, total_value = self.get_current_portfolio()
 
-            # Load previous state before running strategy so we can restore
-            # _consecutive_high_scores — this counter must persist across daily
-            # GitHub Actions runs for the defensive-rotation gate to work correctly.
+            # Load previous state (allocation history, last rebalance date, etc.)
+            # No need to restore a run counter — persistence is now evaluated
+            # directly from historical market data each run.
             previous_state = self._load_state()
-            strategy = self._get_strategy()
-            if previous_state and 'consecutive_high_scores' in previous_state:
-                strategy._consecutive_high_scores = previous_state['consecutive_high_scores']
-                print(f"[LiveTrader] Restored consecutive_high_scores="
-                      f"{strategy._consecutive_high_scores} from state")
+            self._get_strategy()  # ensure strategy is instantiated
 
             # Step 4: Run strategy to get target portfolio
             print("\n[Step 4/6] Running strategy...")
