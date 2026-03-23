@@ -1,0 +1,70 @@
+name: Refresh Robinhood Session
+
+# Runs every day at 8:00 AM ET (13:00 UTC), including weekends.
+# This is intentionally 2 hours BEFORE the daily trade job (10:00 AM ET)
+# so the trade job always starts with a freshly-refreshed session.
+#
+# The session is stored as a base64-encoded pickle in the ROBINHOOD_SESSION
+# secret. robin_stocks refreshes the OAuth token on each login, so running
+# this script keeps the session alive and prevents the ~7-day expiry.
+
+on:
+  schedule:
+    - cron: '0 13 * * *'   # 08:00 ET every day (including Sat/Sun)
+  workflow_dispatch:         # Allow manual trigger
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore Robinhood session
+        env:
+          ROBINHOOD_SESSION: ${{ secrets.ROBINHOOD_SESSION }}
+        run: |
+          if [ -n "$ROBINHOOD_SESSION" ]; then
+            mkdir -p .session
+            echo "$ROBINHOOD_SESSION" | base64 -d > .session/robinhood.pickle
+            echo "Session pickle restored ($(stat -c%s .session/robinhood.pickle) bytes)."
+          else
+            echo "ERROR: ROBINHOOD_SESSION secret is not set."
+            echo "Run 'python scripts/bootstrap_session.py' locally to create one."
+            exit 1
+          fi
+
+      - name: Refresh session
+        env:
+          ROBINHOOD_USERNAME: ${{ secrets.ROBINHOOD_USERNAME }}
+          ROBINHOOD_PASSWORD: ${{ secrets.ROBINHOOD_PASSWORD }}
+          ROBINHOOD_PICKLE_PATH: .session
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: python scripts/refresh_session.py
+
+      - name: Save refreshed session to secret
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -f .session/robinhood.pickle ]; then
+            NEW_SESSION=$(base64 -w 0 .session/robinhood.pickle)
+            gh secret set ROBINHOOD_SESSION --body "$NEW_SESSION"
+            echo "ROBINHOOD_SESSION secret updated."
+          else
+            echo "WARNING: No pickle file found — secret not updated."
+          fi
