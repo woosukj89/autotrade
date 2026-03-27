@@ -86,7 +86,47 @@ def get_token_expiry(pickle_dir: str) -> Optional[datetime]:
         return None
 
 
-# ── Email warning ──────────────────────────────────────────────────
+# ── Email helpers ──────────────────────────────────────────────────
+
+def send_failure_email(error_hint: str) -> None:
+    """Send an alert email when the session refresh job itself fails."""
+    notifier = create_email_notifier(DEFAULT_EMAIL)
+    if not notifier.is_configured():
+        print("[refresh_session] Email not configured — skipping failure alert.")
+        return
+
+    subject = "[AutoTrade] ERROR: Robinhood session refresh failed"
+    body_html = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px;">
+        <h2 style="color: #dc3545;">&#10060; Session Refresh Failed</h2>
+
+        <p>The automated Robinhood session refresh job failed on
+        <strong>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</strong>.</p>
+
+        <div style="background: #f8d7da; border: 1px solid #f5c6cb;
+                    padding: 15px; border-radius: 4px; margin: 15px 0;">
+            <strong>Error:</strong><br>
+            <code>{error_hint}</code>
+        </div>
+
+        <p>If this keeps failing, the Robinhood session will expire within ~7 days
+        and live trading will stop. To fix, re-authenticate manually:</p>
+        <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px;">
+python scripts/bootstrap_session.py</pre>
+        <p>Then update the <code>ROBINHOOD_SESSION</code> GitHub Actions secret.</p>
+
+        <hr style="border: 1px solid #eee; margin-top: 20px;">
+        <p style="font-size: 12px; color: #999;">
+            AutoTrade &mdash; {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        </p>
+    </body>
+    </html>
+    """
+
+    notifier.send_email(subject, body_html)
+    print(f"[refresh_session] Failure alert email sent to {DEFAULT_EMAIL}")
+
 
 def send_expiry_warning(age_days: float, expiry: Optional[datetime]) -> None:
     """Send a warning email that the session was dangerously close to expiry."""
@@ -169,10 +209,12 @@ def main():
         connector = create_robinhood_connector()
     except Exception as e:
         print(f"ERROR: Could not create connector: {e}")
+        send_failure_email(str(e))
         sys.exit(1)
 
     if not connector.connect():
         print("ERROR: Robinhood connection failed.")
+        send_failure_email("connector.connect() returned False — check credentials or MFA challenge")
         sys.exit(1)
 
     print("Connected — session token refreshed.")
