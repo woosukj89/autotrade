@@ -1,5 +1,5 @@
 {
-  "bear_score": 34.345240400741794,
+  "bear_score": 32.68728356189269,
   "allocation": [
     1.0,
     0.0
@@ -8,53 +8,53 @@
   "positions": {
     "MU": {
       "shares": 22.0,
-      "avg_cost": 511.0299
+      "avg_cost": 531.8501
     },
     "ANET": {
-      "shares": 67.0,
-      "avg_cost": 170.58
+      "shares": 66.0,
+      "avg_cost": 175.755
+    },
+    "LRCX": {
+      "shares": 45.0,
+      "avg_cost": 257.235
     },
     "NVDA": {
-      "shares": 57.0,
-      "avg_cost": 200.415
-    },
-    "MRVL": {
-      "shares": 66.0,
-      "avg_cost": 165.01
+      "shares": 58.0,
+      "avg_cost": 199.15
     },
     "MSFT": {
-      "shares": 27.0,
-      "avg_cost": 402.565
-    },
-    "GOOG": {
       "shares": 26.0,
-      "avg_cost": 373.66
+      "avg_cost": 415.84
+    },
+    "META": {
+      "shares": 17.0,
+      "avg_cost": 611.82
     },
     "GOOGL": {
       "shares": 26.0,
-      "avg_cost": 376.105
+      "avg_cost": 384.5144
+    },
+    "GOOG": {
+      "shares": 26.0,
+      "avg_cost": 380.48
     },
     "LVS": {
-      "shares": 183.0,
-      "avg_cost": 54.45
+      "shares": 188.0,
+      "avg_cost": 53.77
     },
     "NEM": {
-      "shares": 90.0,
-      "avg_cost": 110.585
-    },
-    "NFLX": {
-      "shares": 101.0,
-      "avg_cost": 93.425
+      "shares": 92.0,
+      "avg_cost": 109.68
     },
     "ISRG": {
       "shares": 20.0,
-      "avg_cost": 454.99
+      "avg_cost": 462.34
     },
-    "V": {
-      "shares": 28.0,
-      "avg_cost": 330.2
+    "NFLX": {
+      "shares": 102.0,
+      "avg_cost": 93.84
     }
   },
-  "timestamp": "2026-04-30T16:25:52.662684",
+  "timestamp": "2026-05-01T16:02:03.507427",
   "last_rebalance": "2026-04-06T15:55:18.689107"
 }
