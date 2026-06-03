@@ -1,60 +1,60 @@
 {
-  "bear_score": 26.644107378086417,
+  "bear_score": 26.887078960377853,
   "allocation": [
     1.0,
     0.0
   ],
   "risk_level": "LOW",
   "positions": {
-    "ANET": {
-      "shares": 76.0,
-      "avg_cost": 174.465
-    },
     "MU": {
       "shares": 12.0,
-      "avg_cost": 1047.765
-    },
-    "NVDA": {
-      "shares": 59.0,
-      "avg_cost": 222.34
+      "avg_cost": 1073.37
     },
     "LRCX": {
-      "shares": 40.0,
-      "avg_cost": 331.33
+      "shares": 39.0,
+      "avg_cost": 343.61
+    },
+    "ANET": {
+      "shares": 76.0,
+      "avg_cost": 175.96
+    },
+    "NVDA": {
+      "shares": 62.0,
+      "avg_cost": 216.02
     },
     "WDC": {
-      "shares": 23.0,
-      "avg_cost": 564.48
+      "shares": 22.0,
+      "avg_cost": 589.6682
     },
-    "GOOG": {
-      "shares": 33.0,
-      "avg_cost": 361.5199
+    "META": {
+      "shares": 19.0,
+      "avg_cost": 622.315
     },
     "GOOGL": {
       "shares": 33.0,
-      "avg_cost": 364.6299
+      "avg_cost": 360.83
     },
-    "META": {
-      "shares": 20.0,
-      "avg_cost": 603.185
+    "GOOG": {
+      "shares": 34.0,
+      "avg_cost": 357.25
     },
-    "TPR": {
-      "shares": 81.0,
-      "avg_cost": 140.205
+    "NEM": {
+      "shares": 107.0,
+      "avg_cost": 108.3
     },
     "AFL": {
       "shares": 100.0,
-      "avg_cost": 113.765
-    },
-    "NEM": {
-      "shares": 105.0,
-      "avg_cost": 109.3
+      "avg_cost": 115.45
     },
     "LVS": {
-      "shares": 223.0,
-      "avg_cost": 51.32
+      "shares": 226.0,
+      "avg_cost": 51.21
+    },
+    "TPR": {
+      "shares": 84.0,
+      "avg_cost": 137.63
     }
   },
-  "timestamp": "2026-06-02T18:44:31.497471",
+  "timestamp": "2026-06-03T18:49:59.262257",
   "last_rebalance": "2026-05-08T16:18:39.460147"
 }
