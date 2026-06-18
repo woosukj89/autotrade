@@ -430,7 +430,7 @@ class HighBetaGrowthStrategy(Strategy):
                     continue
 
                 # Calculate position weight (higher score = higher weight)
-                base_weight = 0.90 / self.max_positions
+                base_weight = 1.00 / self.max_positions
                 score_bonus = (candidate['score'] - self.min_score) / 50 * 0.05  # Up to 5% bonus
                 weight = min(base_weight + score_bonus, self.max_position_weight)
 

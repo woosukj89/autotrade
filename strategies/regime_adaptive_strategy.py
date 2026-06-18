@@ -278,7 +278,7 @@ class RegimeAdaptiveStrategy(Strategy):
             1 for s in [bear_score_1m_ago, bear_score] if s >= 60
         )
         print(f"  Persistence: now={bear_score:.1f}, 1m_ago={bear_score_1m_ago:.1f} "
-              f"-> {self._consecutive_high_scores}/2 monthly readings ≥60")
+              f"-> {self._consecutive_high_scores}/2 monthly readings >=60")
 
         # ===== ASYMMETRIC SWITCHING =====
         # Going defensive: Require high score + momentum confirmation + persistence
