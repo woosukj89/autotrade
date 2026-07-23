@@ -57,7 +57,7 @@ jobs:
         run: python scripts/refresh_session.py
 
       - name: Save refreshed session to secret
-        if: always()
+        if: success()
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |

@@ -52,7 +52,7 @@ jobs:
         run: python live/live_regime_trader.py --live --no-confirm --state-file live/trader_state.json
 
       - name: Save updated session
-        if: always()
+        if: success()
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
