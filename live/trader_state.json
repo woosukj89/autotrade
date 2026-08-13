@@ -1,5 +1,5 @@
 {
-  "bear_score": 30.88587748346976,
+  "bear_score": 30.693133892056213,
   "allocation": [
     1.0,
     0.0
@@ -7,54 +7,54 @@
   "risk_level": "LOW",
   "positions": {
     "LRCX": {
-      "shares": 40.0,
-      "avg_cost": 326.165
-    },
-    "MU": {
-      "shares": 14.0,
-      "avg_cost": 923.56
-    },
-    "NVDA": {
-      "shares": 59.0,
-      "avg_cost": 223.06
-    },
-    "FTNT": {
-      "shares": 81.0,
-      "avg_cost": 163.51
+      "shares": 39.0,
+      "avg_cost": 337.145
     },
     "ANET": {
       "shares": 63.0,
-      "avg_cost": 208.085
+      "avg_cost": 208.01
     },
-    "GOOG": {
-      "shares": 35.0,
-      "avg_cost": 340.44
+    "FTNT": {
+      "shares": 81.0,
+      "avg_cost": 163.06
+    },
+    "NVDA": {
+      "shares": 59.0,
+      "avg_cost": 224.3026
+    },
+    "MU": {
+      "shares": 13.0,
+      "avg_cost": 960.0
     },
     "GOOGL": {
       "shares": 35.0,
-      "avg_cost": 341.49
+      "avg_cost": 344.875
+    },
+    "GOOG": {
+      "shares": 35.0,
+      "avg_cost": 343.19
     },
     "CBOE": {
-      "shares": 42.0,
-      "avg_cost": 286.81
+      "shares": 41.0,
+      "avg_cost": 290.6601
     },
     "TPR": {
-      "shares": 75.0,
-      "avg_cost": 153.41
-    },
-    "AMZN": {
-      "shares": 41.0,
-      "avg_cost": 267.95
+      "shares": 87.0,
+      "avg_cost": 131.82
     },
     "META": {
       "shares": 18.0,
-      "avg_cost": 581.374
+      "avg_cost": 585.675
     },
-    "EOG": {
-      "shares": 77.0,
-      "avg_cost": 142.08
+    "AMZN": {
+      "shares": 41.0,
+      "avg_cost": 265.86
+    },
+    "EXPE": {
+      "shares": 33.0,
+      "avg_cost": 324.1
     }
   },
-  "timestamp": "2026-08-12T16:02:46.518218",
+  "timestamp": "2026-08-13T16:02:44.343123",
   "last_rebalance": "2026-08-11T16:04:50.431945"
 }
