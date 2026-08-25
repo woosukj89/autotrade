@@ -693,6 +693,8 @@ class LiveRegimeTrader:
         self._bear_score: float = 0.0
         self._risk_level: str = "Unknown"
         self._allocation: Tuple[float, float] = (1.0, 0.0)
+        self._factor_scores: dict = {}
+        self._session_failed: bool = False
 
     def _get_strategy(self):
         """Lazy-load the strategy to avoid circular import issues."""
@@ -719,7 +721,7 @@ class LiveRegimeTrader:
             print(f"[LiveTrader] Warning: could not load state file: {e}")
             return None
 
-    def _save_state(self, last_rebalance: Optional[str] = None) -> None:
+    def _save_state(self, last_rebalance: Optional[str] = None, portfolio_value: Optional[float] = None) -> None:
         """Save current trader state to JSON file."""
         if not self.state_file:
             return
@@ -733,6 +735,7 @@ class LiveRegimeTrader:
             } if hasattr(self, '_last_target_positions') else {},
             'timestamp': datetime.now().isoformat(),
             'last_rebalance': last_rebalance,
+            'portfolio_value': portfolio_value,
         }
         try:
             os.makedirs(os.path.dirname(os.path.abspath(self.state_file)), exist_ok=True)
@@ -839,6 +842,7 @@ class LiveRegimeTrader:
 
         # Capture regime state for reporting
         self._bear_score = strategy._current_bear_score
+        self._factor_scores = getattr(strategy, '_current_factor_scores', {})
         self._allocation = strategy._current_allocation
 
         # Get risk level
@@ -1012,18 +1016,20 @@ class LiveRegimeTrader:
 
     def build_report(
         self,
-        account: AccountInfo,
+        account: Optional[AccountInfo],
         portfolio: Portfolio,
         total_value: float,
         actions: List[RebalanceAction],
         regime_changed: bool,
+        session_failed: bool = False,
+        previous_portfolio_value: Optional[float] = None,
     ) -> RebalanceReport:
         """Build a rebalance report for email notification and file save."""
 
-        # Build positions dict
+        # Build positions dict (safe when session failed — portfolio.positions will be empty)
         positions_dict = {}
         for ticker, pos in portfolio.positions.items():
-            quote = self.connector.get_quote(ticker)
+            quote = self.connector.get_quote(ticker) if not session_failed else None
             current_price = quote.last if quote else pos.avg_cost
             market_value = pos.shares * current_price
             pnl_pct = ((current_price - pos.avg_cost) / pos.avg_cost * 100) if pos.avg_cost > 0 else 0
@@ -1082,11 +1088,14 @@ class LiveRegimeTrader:
             allocation_defensive=self._allocation[1],
             actions=actions,
             portfolio_value=total_value,
-            cash=account.cash,
+            cash=account.cash if account is not None else 0.0,
             positions=positions_dict,
             rebalance_reason=reason,
             regime_change=regime_changed,
             hold_reason=hold_reason,
+            factor_scores=self._factor_scores if self._factor_scores else None,
+            session_failed=session_failed,
+            previous_portfolio_value=previous_portfolio_value,
         )
 
         return report
@@ -1293,38 +1302,52 @@ class LiveRegimeTrader:
         print("=" * 70)
 
         try:
-            # Step 1: Connect to exchange
+            # Step 1: Connect to exchange (non-fatal — regime check runs regardless)
             print("\n[Step 1/6] Connecting to exchange...")
+            session_failed = False
             if not self.connector.is_connected():
                 if not self.connector.connect():
-                    print("Failed to connect!")
-                    return False
-            print("Connected successfully.")
-
-            # Step 2: Check market hours
-            print("\n[Step 2/6] Checking market hours...")
-            is_open = self.connector.is_market_open()
-            market_hours = self.connector.get_market_hours()
-
-            if is_open:
-                print("Market is OPEN.")
+                    print("WARNING: Failed to connect to Robinhood. Running regime check only.")
+                    session_failed = True
+                    self._session_failed = True
+                else:
+                    print("Connected successfully.")
             else:
-                print("Market is CLOSED.")
-                if market_hours:
-                    print(f"  Opens: {market_hours.get('open', 'N/A')}")
-                    print(f"  Closes: {market_hours.get('close', 'N/A')}")
+                print("Already connected.")
 
-            # Step 3: Get current portfolio
-            print("\n[Step 3/6] Fetching current portfolio...")
-            account, portfolio, total_value = self.get_current_portfolio()
-
-            # Load previous state (allocation history, last rebalance date, etc.)
-            # No need to restore a run counter — persistence is now evaluated
-            # directly from historical market data each run.
+            # Load previous state early (needed for portfolio delta in all cases)
             previous_state = self._load_state()
+            previous_portfolio_value = previous_state.get('portfolio_value') if previous_state else None
+
+            # Step 2: Check market hours (only when connected)
+            if not session_failed:
+                print("\n[Step 2/6] Checking market hours...")
+                is_open = self.connector.is_market_open()
+                market_hours = self.connector.get_market_hours()
+
+                if is_open:
+                    print("Market is OPEN.")
+                else:
+                    print("Market is CLOSED.")
+                    if market_hours:
+                        print(f"  Opens: {market_hours.get('open', 'N/A')}")
+                        print(f"  Closes: {market_hours.get('close', 'N/A')}")
+            else:
+                print("\n[Step 2/6] Skipping market hours check (session unavailable).")
+
+            # Step 3: Get current portfolio (or use empty when session failed)
+            if not session_failed:
+                print("\n[Step 3/6] Fetching current portfolio...")
+                account, portfolio, total_value = self.get_current_portfolio()
+            else:
+                print("\n[Step 3/6] Skipping portfolio fetch (session unavailable).")
+                account = None
+                portfolio = Portfolio(cash=0.0, positions={})
+                total_value = 0.0
+
             self._get_strategy()  # ensure strategy is instantiated
 
-            # Step 4: Run strategy to get target portfolio
+            # Step 4: Run strategy — always runs (uses yfinance/FRED, no Robinhood needed)
             print("\n[Step 4/6] Running strategy...")
             target_portfolio = self.run_strategy(portfolio)
 
@@ -1337,11 +1360,12 @@ class LiveRegimeTrader:
             # Store target positions for state saving
             self._last_target_positions = target_portfolio.positions
 
-            # Step 5: Calculate and execute trades
-            # Trigger when allocation changed OR monthly rebalance is due
+            # Step 5: Calculate and execute trades (only when session is available)
             actions = []
             rebalanced_now = False
-            if alloc_changed or monthly_rebalance_due:
+            if session_failed:
+                print("\n[Step 5/6] Skipping trades — Robinhood session unavailable.")
+            elif alloc_changed or monthly_rebalance_due:
                 if alloc_changed:
                     step_reason = "Allocation changed"
                 else:
@@ -1363,7 +1387,9 @@ class LiveRegimeTrader:
             # Step 6: Build, save, and send report (ALWAYS)
             print("\n[Step 6/6] Building and saving report...")
             report = self.build_report(
-                account, portfolio, total_value, actions, regime_changed
+                account, portfolio, total_value, actions, regime_changed,
+                session_failed=session_failed,
+                previous_portfolio_value=previous_portfolio_value,
             )
 
             # Always save report to file
@@ -1373,9 +1399,11 @@ class LiveRegimeTrader:
             self.send_report(report)
 
             # Save state; propagate last_rebalance timestamp
+            # Preserve last known portfolio_value when session failed
             prev_last_rebalance = previous_state.get('last_rebalance') if previous_state else None
             new_last_rebalance = datetime.now().isoformat() if rebalanced_now else prev_last_rebalance
-            self._save_state(last_rebalance=new_last_rebalance)
+            saved_portfolio_value = total_value if not session_failed else previous_portfolio_value
+            self._save_state(last_rebalance=new_last_rebalance, portfolio_value=saved_portfolio_value)
 
             # Print summary
             print("\n" + "=" * 70)
@@ -1385,11 +1413,14 @@ class LiveRegimeTrader:
             print(f"Risk Level: {self._risk_level}")
             print(f"Allocation: {self._allocation[0]*100:.0f}% Aggressive / {self._allocation[1]*100:.0f}% Defensive")
             print(f"Trades Executed: {len(actions)}")
-            print(f"Portfolio Value: ${total_value:,.2f}")
-            print(f"Positions: {len(portfolio.positions)}")
+            if not session_failed:
+                print(f"Portfolio Value: ${total_value:,.2f}")
+                print(f"Positions: {len(portfolio.positions)}")
+            else:
+                print("Portfolio: N/A (Robinhood session failed)")
             print("=" * 70)
 
-            return True
+            return not session_failed
 
         except Exception as e:
             print(f"\n[LiveTrader] ERROR: {e}")

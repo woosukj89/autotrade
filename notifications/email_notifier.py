@@ -58,6 +58,11 @@ class RebalanceReport:
     regime_change: bool
     hold_reason: Optional[str] = None  # Why defensive rotation was blocked despite elevated score
 
+    # Extended fields
+    factor_scores: Optional[Dict[str, float]] = None  # MacroMom component scores (0-1 each)
+    session_failed: bool = False  # True if Robinhood session was unavailable
+    previous_portfolio_value: Optional[float] = None  # Last run's total portfolio value
+
 
 class EmailNotifier:
     """
@@ -183,7 +188,8 @@ class EmailNotifier:
         Returns:
             True if email sent successfully.
         """
-        subject = f"[AutoTrade] Rebalance Report - {report.strategy_name} - {report.timestamp.strftime('%Y-%m-%d')}"
+        session_label = " [SESSION FAILED]" if report.session_failed else ""
+        subject = f"[AutoTrade]{session_label} Rebalance Report - {report.strategy_name} - {report.timestamp.strftime('%Y-%m-%d')}"
 
         # Build HTML body
         body_html = self._build_rebalance_report_html(report)
@@ -307,63 +313,93 @@ class EmailNotifier:
             </div>
             """
 
-        body_html = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto;">
-
-            <h1 style="color: #333; border-bottom: 2px solid #333; padding-bottom: 10px;">
-                Rebalance Report
-            </h1>
-
-            <p style="color: #666;">
-                <strong>Strategy:</strong> {report.strategy_name}<br>
-                <strong>Date:</strong> {report.timestamp.strftime('%Y-%m-%d %H:%M:%S')}
-            </p>
-
-            {regime_change_html}
-
-            <!-- Regime Status -->
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                <h3 style="margin: 0 0 10px 0; color: #333;">Market Regime</h3>
-                <table style="width: 100%;">
-                    <tr>
-                        <td style="padding: 5px 0;">
-                            <strong>Bear Score:</strong>
-                        </td>
-                        <td style="padding: 5px 0;">
-                            {report.bear_score:.1f} / 100
-                        </td>
+        # Build MacroMom factor scores breakdown table
+        factor_table_html = ""
+        if report.factor_scores:
+            macro_mom_weights = {
+                "yield_curve_momentum": (0.30, "Yield Curve Momentum"),
+                "breadth_momentum": (0.25, "Breadth Momentum"),
+                "vix_momentum": (0.25, "VIX Momentum"),
+                "price_momentum": (0.20, "Price Momentum"),
+            }
+            factor_rows = ""
+            for key, (weight, label) in macro_mom_weights.items():
+                score = report.factor_scores.get(key, 0.0)
+                contribution = score * weight * 100
+                max_contribution = weight * 100
+                if score < 0.4:
+                    row_color = "#d4edda"
+                    score_color = "#155724"
+                elif score < 0.6:
+                    row_color = "#fff3cd"
+                    score_color = "#856404"
+                elif score < 0.8:
+                    row_color = "#fde8d8"
+                    score_color = "#c05621"
+                else:
+                    row_color = "#f8d7da"
+                    score_color = "#721c24"
+                factor_rows += f"""
+                <tr style="background: {row_color};">
+                    <td style="padding: 6px 8px; font-size: 13px;">{label}</td>
+                    <td style="padding: 6px 8px; text-align: center; font-weight: bold; color: {score_color}; font-size: 13px;">{score:.3f}</td>
+                    <td style="padding: 6px 8px; text-align: center; font-size: 13px; color: #555;">{weight*100:.0f}%</td>
+                    <td style="padding: 6px 8px; text-align: right; font-size: 13px;">{contribution:.1f} / {max_contribution:.0f}</td>
+                </tr>
+                """
+            factor_table_html = f"""
+            <h4 style="margin: 12px 0 6px 0; color: #555; font-size: 13px;">MacroMom Indicator Breakdown</h4>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <thead>
+                    <tr style="background: #e9ecef;">
+                        <th style="padding: 6px 8px; text-align: left; font-size: 12px; color: #666;">Indicator</th>
+                        <th style="padding: 6px 8px; text-align: center; font-size: 12px; color: #666;">Score (0–1)</th>
+                        <th style="padding: 6px 8px; text-align: center; font-size: 12px; color: #666;">Weight</th>
+                        <th style="padding: 6px 8px; text-align: right; font-size: 12px; color: #666;">Contribution</th>
                     </tr>
-                    <tr>
-                        <td style="padding: 5px 0;">
-                            <strong>Risk Level:</strong>
-                        </td>
-                        <td style="padding: 5px 0;">
-                            <span style="color: {risk_color}; font-weight: bold;">
-                                {report.risk_level}
-                            </span>
-                        </td>
+                </thead>
+                <tbody>
+                    {factor_rows}
+                    <tr style="background: #e9ecef; font-weight: bold;">
+                        <td style="padding: 6px 8px; font-size: 13px;">Total Bear Score</td>
+                        <td style="padding: 6px 8px;"></td>
+                        <td style="padding: 6px 8px;"></td>
+                        <td style="padding: 6px 8px; text-align: right; font-size: 13px; color: {risk_color};">{report.bear_score:.1f} / 100</td>
                     </tr>
+                </tbody>
+            </table>
+            """
+
+        # Build portfolio delta HTML
+        if report.previous_portfolio_value and report.previous_portfolio_value > 0 and not report.session_failed:
+            delta = report.portfolio_value - report.previous_portfolio_value
+            pct = (delta / report.previous_portfolio_value) * 100
+            sign = "+" if delta >= 0 else ""
+            delta_color = "#28a745" if delta >= 0 else "#dc3545"
+            delta_html = f'<span style="color:{delta_color}; font-weight: bold;">{sign}${abs(delta):,.2f} ({sign}{pct:.2f}%)</span> vs last run'
+            delta_row = f"""
                     <tr>
-                        <td style="padding: 5px 0;">
-                            <strong>Allocation:</strong>
-                        </td>
-                        <td style="padding: 5px 0;">
-                            {report.allocation_aggressive*100:.0f}% Aggressive /
-                            {report.allocation_defensive*100:.0f}% Defensive
-                        </td>
+                        <td style="padding: 5px 0;"><strong>Change since last run:</strong></td>
+                        <td style="padding: 5px 0; text-align: right;">{delta_html}</td>
                     </tr>
-                </table>
+            """
+        else:
+            delta_row = ""
+
+        # Build portfolio / holdings section (hidden when session failed)
+        if report.session_failed:
+            last_known = ""
+            if report.previous_portfolio_value and report.previous_portfolio_value > 0:
+                last_known = f"<br>Last known portfolio value: <strong>${report.previous_portfolio_value:,.2f}</strong>"
+            portfolio_section_html = f"""
+            <h3 style="color: #333; margin-top: 30px;">Portfolio Summary</h3>
+            <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin: 10px 0;">
+                <strong>&#9888; Portfolio data unavailable &mdash; Robinhood session failed or expired.</strong>
+                {last_known}
             </div>
-
-            <!-- Reason -->
-            <div style="background: #e7f3ff; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                <h3 style="margin: 0 0 10px 0; color: #0066cc;">Rebalance Reason</h3>
-                <p style="margin: 0; color: #333;">{report.rebalance_reason}</p>
-            </div>
-
-            {actions_html}
-
+            """
+        else:
+            portfolio_section_html = f"""
             <!-- Portfolio Summary -->
             <h3 style="color: #333; margin-top: 30px;">Portfolio Summary</h3>
             <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0;">
@@ -374,6 +410,7 @@ class EmailNotifier:
                             <strong>${report.portfolio_value:,.2f}</strong>
                         </td>
                     </tr>
+                    {delta_row}
                     <tr>
                         <td style="padding: 5px 0;"><strong>Cash:</strong></td>
                         <td style="padding: 5px 0; text-align: right;">${report.cash:,.2f}</td>
@@ -400,6 +437,67 @@ class EmailNotifier:
                     {positions_rows}
                 </tbody>
             </table>
+            """
+
+        body_html = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto;">
+
+            <h1 style="color: #333; border-bottom: 2px solid #333; padding-bottom: 10px;">
+                Rebalance Report
+            </h1>
+
+            <p style="color: #666;">
+                <strong>Strategy:</strong> {report.strategy_name}<br>
+                <strong>Date:</strong> {report.timestamp.strftime('%Y-%m-%d %H:%M:%S')}
+            </p>
+
+            {regime_change_html}
+
+            <!-- Regime Status -->
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="margin: 0 0 10px 0; color: #333;">Market Regime</h3>
+                <table style="width: 100%;">
+                    <tr>
+                        <td style="padding: 5px 0;">
+                            <strong>Bear Score:</strong>
+                        </td>
+                        <td style="padding: 5px 0;">
+                            <span style="color: {risk_color}; font-weight: bold;">{report.bear_score:.1f} / 100</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;">
+                            <strong>Risk Level:</strong>
+                        </td>
+                        <td style="padding: 5px 0;">
+                            <span style="color: {risk_color}; font-weight: bold;">
+                                {report.risk_level}
+                            </span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;">
+                            <strong>Allocation:</strong>
+                        </td>
+                        <td style="padding: 5px 0;">
+                            {report.allocation_aggressive*100:.0f}% Aggressive /
+                            {report.allocation_defensive*100:.0f}% Defensive
+                        </td>
+                    </tr>
+                </table>
+                {factor_table_html}
+            </div>
+
+            <!-- Reason -->
+            <div style="background: #e7f3ff; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="margin: 0 0 10px 0; color: #0066cc;">Rebalance Reason</h3>
+                <p style="margin: 0; color: #333;">{report.rebalance_reason}</p>
+            </div>
+
+            {actions_html}
+
+            {portfolio_section_html}
 
             <hr style="border: 1px solid #eee; margin-top: 30px;">
             <p style="font-size: 12px; color: #999;">

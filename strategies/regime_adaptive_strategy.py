@@ -133,9 +133,13 @@ class RegimeAdaptiveStrategy(Strategy):
         self._current_allocation: Tuple[float, float] = (1.0, 0.0)  # (high_beta, bear_beta)
         self._bear_score_history: List[float] = []
         self._current_bear_score: float = 0.0
+        self._current_factor_scores: dict = {}
         self._regime_inputs: Optional[dict] = None
         self._momentum_confirmed: bool = False  # Price below 200 DMA
         self._consecutive_high_scores: int = 0  # Require persistence
+        # Logged for chart / analysis
+        self._reposition_log: List[dict] = []
+        self._score_history_log: List[dict] = []  # {date, score}
 
     def _fetch_regime_inputs_from_context(self, context: ExecutionContext) -> dict:
         """
@@ -236,6 +240,7 @@ class RegimeAdaptiveStrategy(Strategy):
         )
 
         self._current_bear_score = bear_score
+        self._current_factor_scores = factor_scores
         self._bear_score_history.append(bear_score)
         if len(self._bear_score_history) > 52:
             self._bear_score_history = self._bear_score_history[-52:]
@@ -310,9 +315,22 @@ class RegimeAdaptiveStrategy(Strategy):
         print(f"[Regime {date_str}] Score={bear_score:.1f} Level={recommendation['level']:8s} "
               f"Mom={momentum_flag} Alloc: {new_allocation[0]*100:.0f}%/{new_allocation[1]*100:.0f}% (HB/Def)")
 
+        # Log score for chart
+        self._score_history_log.append({'date': context.date, 'score': bear_score})
+
         if allocation_change >= self.min_realloc_change:
-            print(f"  -> REALLOCATION: {old_allocation[0]*100:.0f}% -> {new_allocation[0]*100:.0f}% High Beta")
+            direction = '-> DEFENSIVE' if new_allocation[0] < old_allocation[0] else '-> AGGRESSIVE'
+            print(f"  -> REALLOCATION {direction}: {old_allocation[0]*100:.0f}% -> {new_allocation[0]*100:.0f}% High Beta")
             self._current_allocation = new_allocation
+            self._reposition_log.append({
+                'date':     context.date,
+                'trigger':  'macro-bearish' if bear_score > 55 else 'macro-release',
+                'from_hb':  old_allocation[0],
+                'from_bb':  old_allocation[1],
+                'to_hb':    new_allocation[0],
+                'to_bb':    new_allocation[1],
+                'score':    bear_score,
+            })
 
         self._last_regime_check = context.date
 
