@@ -62,6 +62,8 @@ class BacktestResult:
         self.final_portfolio: Optional[Portfolio] = None
         self.benchmark_values: list[float] = []  # benchmark portfolio value over time
         self.benchmark_ticker: str = "SPY"
+        self.tax_paid: float = 0.0          # Total taxes deducted during simulation
+        self.tax_rate: float = 0.0          # Rate used (informational)
 
     # ── scalar metrics ────────────────────────────────────────────────
 
@@ -309,6 +311,8 @@ class BacktestResult:
             "sharpe_ratio": self.sharpe_ratio,
             "sortino_ratio": self.sortino_ratio,
             "total_trades": len(self.trades),
+            "tax_paid": self.tax_paid,
+            "tax_rate": self.tax_rate,
             # Benchmark comparison
             "benchmark": self.benchmark_ticker,
             "benchmark_total_return": self.benchmark_total_return,
@@ -633,12 +637,15 @@ class Backtest:
     backtests use "d" or longer.
     """
 
-    def __init__(self, db_path: str = "fundamentals.sqlite"):
+    def __init__(self, db_path: str = "fundamentals.sqlite", tax_rate: float = 0.0):
         self.db_path = db_path
+        self.tax_rate = tax_rate            # e.g. 0.25 for 25% on net realized gains
         self._price_cache: dict[str, pd.DataFrame] = {}
         self._start_date: Optional[datetime] = None
         self._end_date: Optional[datetime] = None
         self._current_date: Optional[datetime] = None
+        self._annual_realized_gains: dict[int, float] = {}
+        self._total_tax_paid: float = 0.0
 
     # ── price helpers ─────────────────────────────────────────────────
 
@@ -758,9 +765,18 @@ class Backtest:
             if market_price is None:
                 continue
 
+            avg_cost = current.positions[ticker].avg_cost
             exec_price = self._apply_buffer(market_price, "sell", buffer_pricing)
             proceeds = sell_shares * exec_price
             current.cash += proceeds
+
+            # Track realized gain for year-end tax calculation
+            if self.tax_rate > 0:
+                gain = (exec_price - avg_cost) * sell_shares
+                year = self._current_date.year
+                self._annual_realized_gains[year] = (
+                    self._annual_realized_gains.get(year, 0.0) + gain
+                )
 
             if des_shares <= 0:
                 del current.positions[ticker]
@@ -841,6 +857,7 @@ class Backtest:
         strategy: Strategy = None,
         time_period: str = "d",
         benchmark: str = "SPY",
+        preloaded_price_cache: dict = None,
     ) -> BacktestResult:
         """Run a backtest.
 
@@ -877,7 +894,10 @@ class Backtest:
 
         self._start_date = datetime(end_year - lookback_years, 1, 1)
         self._end_date = datetime(end_year, 12, 31)
-        self._price_cache = {}
+        # Allow passing a pre-populated cache to avoid re-fetching across sweep iterations
+        self._price_cache = dict(preloaded_price_cache) if preloaded_price_cache else {}
+        self._annual_realized_gains = {}
+        self._total_tax_paid = 0.0
 
         freq = FREQ_MAP[time_period]
         dates = pd.date_range(start=self._start_date, end=self._end_date, freq=freq)
@@ -912,6 +932,15 @@ class Backtest:
             trades = self._execute_trades(portfolio, desired, buffer_pricing)
             result.trades.extend(trades)
 
+            # Year-end tax deduction on net realized gains (December snapshot)
+            if self.tax_rate > 0 and self._current_date.month == 12:
+                year = self._current_date.year
+                net_gains = self._annual_realized_gains.get(year, 0.0)
+                tax_owed = max(0.0, net_gains) * self.tax_rate
+                if tax_owed > 0:
+                    portfolio.cash = max(0.0, portfolio.cash - tax_owed)
+                    self._total_tax_paid += tax_owed
+
             pos_value = self._positions_value(portfolio)
             result.snapshots.append(PortfolioSnapshot(
                 date=self._current_date,
@@ -932,4 +961,6 @@ class Backtest:
                 )
 
         result.final_portfolio = deepcopy(portfolio)
+        result.tax_paid = self._total_tax_paid
+        result.tax_rate = self.tax_rate
         return result

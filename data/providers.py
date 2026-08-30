@@ -111,6 +111,19 @@ class FREDProvider(DataProvider):
         'unemployment': 'UNRATE',
         'real_gdp': 'GDPC1',
         'sp500': 'SP500',
+        # Bond/rate predictor series
+        'real_y10': 'DFII10',
+        'real_y5': 'DFII5',
+        'breakeven_5y': 'T5YIE',
+        'forward_inflation': 'T5YIFR',
+        'y5': 'DGS5',
+        'y30': 'DGS30',
+        # Enhanced v2 additions
+        'cpi_core': 'CPILFESL',    # Core CPI (ex-food & energy) — stronger bear signal
+        'ppi': 'PPIACO',           # Producer Price Index — leads consumer inflation
+        'y3m_tb': 'DGS3MO',        # 3-month Treasury (alias matching T10Y3M denominator)
+        't10y3m': 'T10Y3M',        # 10Y minus 3M spread (pre-calculated by FRED)
+        't10y2y': 'T10Y2Y',        # 10Y minus 2Y spread (pre-calculated by FRED)
     }
 
     def __init__(self, api_key: Optional[str] = None):

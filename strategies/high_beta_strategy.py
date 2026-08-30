@@ -226,18 +226,28 @@ class HighBetaGrowthStrategy(Strategy):
                 params=(*tickers, cutoff_date),
             )
             for _, row in cached_betas.iterrows():
-                self._beta_cache[row['ticker']] = row['beta']
+                if row['beta'] is not None:  # Skip NULL betas — treat as uncached
+                    self._beta_cache[row['ticker']] = row['beta']
 
-        # Determine what needs fetching
+        # Determine what needs fetching (also retry tickers whose cached beta was NULL)
         need_beta = [t for t in tickers if t not in self._beta_cache]
         need_funds = [t for t in tickers if t not in self._fundamentals_cache]
 
-        # Fetch betas (calculated from price history)
+        # Fetch fundamentals first so fund.beta is available as fallback below
+        if need_funds:
+            print(f"[HighBetaGrowth] Fetching fundamentals for {len(need_funds)} tickers...")
+            fundamentals = self._yahoo_provider.get_fundamentals_batch(need_funds)
+            self._fundamentals_cache.update(fundamentals)
+
+        # Fetch betas (calculated from price history, with yfinance beta fallback)
         if need_beta:
             print(f"[HighBetaGrowth] Calculating beta for {len(need_beta)} tickers...")
             beta_results = []
             for ticker in need_beta:
                 beta = self._calculate_beta(ticker, context)
+                # Fallback: use yfinance beta from fundamentals when history is too short
+                if beta is None and ticker in self._fundamentals_cache:
+                    beta = self._fundamentals_cache[ticker].beta
                 if beta is not None:
                     self._beta_cache[ticker] = beta
                     beta_results.append((ticker, beta, datetime.now().strftime("%Y-%m-%d")))
@@ -250,12 +260,6 @@ class HighBetaGrowthStrategy(Strategy):
                 conn.commit()
 
         conn.close()
-
-        # Fetch fundamentals using Yahoo provider (handles its own caching)
-        if need_funds:
-            print(f"[HighBetaGrowth] Fetching fundamentals for {len(need_funds)} tickers...")
-            fundamentals = self._yahoo_provider.get_fundamentals_batch(need_funds)
-            self._fundamentals_cache.update(fundamentals)
 
     def _score_stock(self, ticker: str) -> Optional[dict]:
         """
