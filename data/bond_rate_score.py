@@ -83,9 +83,11 @@ WATCH_THRESHOLD = 55.0
 _MONTHLY_SERIES = {"cpi_core", "ppi", "m2", "fed_funds"}
 
 # All FRED friendly-names this score needs (see FREDProvider.SERIES_MAP).
+# baa10y is a long-history (1986+) fallback for credit_market_stress, since
+# the ICE BofA OAS series (hy_oas/ig_oas) only go back to 2023-08-15.
 _REQUIRED_SERIES = [
     "cpi_core", "ppi", "real_y10", "real_y5", "t10y2y",
-    "y5", "y10", "y30", "hy_oas", "ig_oas", "m2", "fed_funds",
+    "y5", "y10", "y30", "hy_oas", "ig_oas", "m2", "fed_funds", "baa10y",
 ]
 
 
@@ -269,24 +271,54 @@ def policy_gap_score(fed_funds: pd.Series, cpi_core: pd.Series) -> Optional[floa
     return clamp(gap * 0.35)
 
 
-def credit_market_stress_score(hy_oas: pd.Series, ig_oas: pd.Series) -> Optional[float]:
+def _credit_market_stress_score_baa10y(baa10y: pd.Series) -> Optional[float]:
+    """Fallback credit-stress score using the Baa-10Y corporate spread when
+    the ICE BofA OAS series isn't available (pre-Aug-2023 — see
+    credit_market_stress_score). Goes back to 1986 on FRED, so it covers
+    2008 and every other backtest window this strategy is tested against.
+
+    Level-dominant rather than momentum-dominant, unlike the OAS version:
+    BAA10Y sits ~1.5-2.5pp in calm markets and spiked to 6.16 in Dec 2008,
+    so the absolute level alone is highly informative (confirmed: it only
+    hit 2.37 in Oct 2022 — barely above the 2019 calm-market average of
+    2.23 — correctly reflecting that 2022 wasn't a credit-driven bear).
+    """
+    if len(baa10y) < 5:
+        return None
+    level = baa10y.iloc[-1]
+    level_score = clamp((level - 2.0) / 2.5)  # ~2.0 = calm anchor, ~4.5+ = crisis-level, maxed
+    widening = level - baa10y.iloc[-4] if len(baa10y) >= 5 else 0.0
+    momentum_score = clamp(0.5 + widening * 0.5)
+    return 0.7 * level_score + 0.3 * momentum_score
+
+
+def credit_market_stress_score(
+    hy_oas: Optional[pd.Series],
+    ig_oas: Optional[pd.Series],
+    baa10y: Optional[pd.Series] = None,
+) -> Optional[float]:
     """HY + IG OAS combined, 4-week widening velocity. Widening spreads
     (investors demanding more compensation for credit risk) is one of the
     fastest-reacting stress signals available — this is the main component
     aimed at catching *short* bears the old score misses.
 
-    Returns None (not 0.5) when there's insufficient history, so the
-    composite score renormalizes weight onto the other components instead
-    of diluting toward a neutral value with this component's full weight
-    still attached — see module docstring's "VALIDATION FINDING". FRED's
-    BAMLH0A0HYM2/BAMLC0A0CM only go back to 2023-08-15 in this environment,
-    so this component is unavailable for any 2022-and-earlier backtest date.
+    Returns None (not 0.5) when there's insufficient history and no
+    fallback, so the composite score renormalizes weight onto the other
+    components instead of diluting toward a neutral value with this
+    component's full weight still attached — see module docstring's
+    "VALIDATION FINDING". FRED's BAMLH0A0HYM2/BAMLC0A0CM only go back to
+    2023-08-15 in this environment; before that date, falls back to
+    `baa10y` (Moody's Baa-10Y spread, 1986+) if provided, rather than going
+    fully blind — see _credit_market_stress_score_baa10y.
     """
-    combined = (hy_oas + ig_oas).dropna()
-    if len(combined) < 5:
-        return None
-    widening = combined.iloc[-1] - combined.iloc[-4]
-    return clamp(0.5 + widening * 0.15)
+    if hy_oas is not None and ig_oas is not None:
+        combined = (hy_oas + ig_oas).dropna()
+        if len(combined) >= 5:
+            widening = combined.iloc[-1] - combined.iloc[-4]
+            return clamp(0.5 + widening * 0.15)
+    if baa10y is not None:
+        return _credit_market_stress_score_baa10y(baa10y)
+    return None
 
 
 def monetary_policy_stress_score(m2: pd.Series, fed_funds: pd.Series) -> Optional[float]:
@@ -310,6 +342,28 @@ def monetary_policy_stress_score(m2: pd.Series, fed_funds: pd.Series) -> Optiona
 # Composite score
 # =============================================================================
 
+# Economic domain clusters — the fix for "diluted by an unrelated calm
+# component" found while testing the BAA10Y credit fallback (8/31): a
+# straight weighted average across all 7 components lets an accurately-calm
+# component in one domain (e.g. credit_market_stress correctly showing 2022
+# wasn't a credit event) drag the composite down even while a DIFFERENT
+# domain (inflation) is screaming. Grouping into domains and taking the
+# worst domain's own weighted average (see compute_bond_rate_score) means a
+# severe bear in any one domain isn't hidden by calm in another.
+COMPONENT_CLUSTERS = {
+    "inflation": ["inflation_pressure", "ppi_pressure", "real_yield_stress"],
+    "credit_growth": ["credit_market_stress", "monetary_policy_stress"],
+    "rates_curve": ["yield_curve_shape", "policy_gap"],
+}
+
+# How much the composite score leans on the worst domain vs. the overall
+# average. Pure max() (1.0) would react fastest but risks whipsawing on a
+# single noisy component; blending in some overall-average weight keeps a
+# bit of the original smoothing/robustness. Not swept/optimized — a
+# reasonable starting point, backtest-validate before changing further.
+CLUSTER_MAX_WEIGHT = 0.7
+
+
 def compute_bond_rate_score(inputs: Dict[str, pd.Series]) -> Tuple[float, Dict[str, float]]:
     """
     Compute the 7-component Bond & Rate bear score.
@@ -323,10 +377,14 @@ def compute_bond_rate_score(inputs: Dict[str, pd.Series]) -> Tuple[float, Dict[s
 
     Returns:
         (bear_score 0-100, component_scores dict of each 0-1 sub-score —
-        only components with real data are included; the composite score
-        renormalizes BOND_RATE_WEIGHTS over whichever components are
-        actually available, rather than filling gaps with a neutral 0.5
-        that would still consume its full weight)
+        only components with real data are included). The composite blends
+        two things, both computed with BOND_RATE_WEIGHTS renormalized over
+        whichever components are actually available (never diluted by a
+        missing component defaulting to neutral):
+        - the worst-scoring COMPONENT_CLUSTERS domain's own weighted average
+          (catches a severe bear concentrated in one domain)
+        - the overall weighted average across all available components
+          (keeps some cross-domain smoothing/robustness)
     """
     raw: Dict[str, Optional[float]] = {}
 
@@ -348,9 +406,8 @@ def compute_bond_rate_score(inputs: Dict[str, pd.Series]) -> Tuple[float, Dict[s
         policy_gap_score(inputs["fed_funds"], inputs["cpi_core"])
         if "fed_funds" in inputs and "cpi_core" in inputs else None
     )
-    raw["credit_market_stress"] = (
-        credit_market_stress_score(inputs["hy_oas"], inputs["ig_oas"])
-        if "hy_oas" in inputs and "ig_oas" in inputs else None
+    raw["credit_market_stress"] = credit_market_stress_score(
+        inputs.get("hy_oas"), inputs.get("ig_oas"), inputs.get("baa10y")
     )
     raw["monetary_policy_stress"] = (
         monetary_policy_stress_score(inputs["m2"], inputs["fed_funds"])
@@ -362,9 +419,20 @@ def compute_bond_rate_score(inputs: Dict[str, pd.Series]) -> Tuple[float, Dict[s
         return 50.0, {}
 
     weight_sum = sum(BOND_RATE_WEIGHTS[k] for k in available)
-    bear_score = sum(
-        available[k] * BOND_RATE_WEIGHTS[k] for k in available
-    ) / weight_sum * 100
+    overall_avg = sum(available[k] * BOND_RATE_WEIGHTS[k] for k in available) / weight_sum
+
+    cluster_scores = []
+    for members in COMPONENT_CLUSTERS.values():
+        cluster_available = {k: available[k] for k in members if k in available}
+        if not cluster_available:
+            continue
+        cluster_weight_sum = sum(BOND_RATE_WEIGHTS[k] for k in cluster_available)
+        cluster_scores.append(
+            sum(cluster_available[k] * BOND_RATE_WEIGHTS[k] for k in cluster_available) / cluster_weight_sum
+        )
+    worst_cluster = max(cluster_scores) if cluster_scores else overall_avg
+
+    bear_score = (CLUSTER_MAX_WEIGHT * worst_cluster + (1 - CLUSTER_MAX_WEIGHT) * overall_avg) * 100
 
     return bear_score, available
 

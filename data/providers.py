@@ -124,6 +124,11 @@ class FREDProvider(DataProvider):
         'y3m_tb': 'DGS3MO',        # 3-month Treasury (alias matching T10Y3M denominator)
         't10y3m': 'T10Y3M',        # 10Y minus 3M spread (pre-calculated by FRED)
         't10y2y': 'T10Y2Y',        # 10Y minus 2Y spread (pre-calculated by FRED)
+        # Long-history credit-stress proxy — BAMLH0A0HYM2/BAMLC0A0CM (ICE BofA
+        # OAS) only go back to 2023-08-15 (old vintage discontinued). BAA10Y
+        # goes back to 1986 and behaves as expected (peaked 6.16 in Dec 2008,
+        # stayed calm at 2.37 in Oct 2022 since that wasn't a credit event).
+        'baa10y': 'BAA10Y',        # Moody's Baa yield minus 10Y Treasury
     }
 
     def __init__(self, api_key: Optional[str] = None):
