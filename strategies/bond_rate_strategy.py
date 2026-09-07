@@ -76,6 +76,35 @@ class BondRateAdaptiveStrategy(RegimeAdaptiveStrategy):
     bear-beta stock sleeve on the defensive side.
     """
 
+    # TUNING ITERATION 2 (9/2): backtested walk-through of 2022 showed the
+    # score was correctly DEFENSIVE (65-83) for the entire year, but the
+    # inherited RegimeAdaptiveStrategy.ALLOCATION_THRESHOLDS table only ever
+    # allocated 60/40 or 30/70 (HB/Def) even at max conviction - it never
+    # committed below 30% high-beta. Checked the defensive basket's own 2022
+    # return in isolation: +2.7% (GLD +0.8%, SHY -3.8%, SH +19.7%, blended
+    # 40/40/20) - it was FINE. The portfolio still lost ~25% peak-to-trough
+    # in 2022 almost entirely because 30-60% stayed in high-beta tech/semis
+    # names that individually fell 40-50%+ that year. The old table's
+    # "stay aggressive longer, minimal hedge" philosophy was calibrated for
+    # MacroMom, a noisier signal not meant to be fully trusted. This score
+    # has been backtest-validated as a real early-warning signal, so it
+    # should be allowed to actually commit capital once triggered, rather
+    # than treating every defensive signal as tentative.
+    ALLOCATION_THRESHOLDS_BOND_RATE = [
+        # (max_score, high_beta_weight, defensive_weight)
+        (50, 1.00, 0.00),   # LOW: fully aggressive
+        (60, 0.75, 0.25),   # WATCH: light hedge
+        (70, 0.40, 0.60),   # DEFENSIVE (lower band): meaningful commitment
+        (80, 0.15, 0.85),   # DEFENSIVE (higher band): strong commitment
+        (100, 0.00, 1.00),  # DEFENSIVE (extreme): fully committed
+    ]
+
+    def _get_allocation_weights(self, bear_score: float) -> Tuple[float, float]:
+        for max_score, hb_weight, def_weight in self.ALLOCATION_THRESHOLDS_BOND_RATE:
+            if bear_score <= max_score:
+                return (hb_weight, def_weight)
+        return (0.00, 1.00)
+
     def __init__(self, *args, fred_api_key: Optional[str] = None, **kwargs):
         super().__init__(*args, **kwargs)
         # Prefetched ONCE for the whole backtest range — see

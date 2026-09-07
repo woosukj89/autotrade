@@ -235,27 +235,32 @@ def yield_curve_shape_score(t10y2y: pd.Series, y5: pd.Series, y10: pd.Series, y3
 
 
 def policy_gap_score(fed_funds: pd.Series, cpi_core: pd.Series) -> Optional[float]:
-    """Absolute misalignment between Fed funds and an estimated neutral rate.
+    """Fed funds vs. an estimated neutral rate — asymmetric by design.
 
     NOTE: there's no real-time FRED series for r-star (the neutral rate).
     Approximated as: 0.5% assumed real neutral (roughly the Fed's own
     longer-run SEP dot) + a DAMPENED long-run inflation-expectations proxy.
 
-    TUNING ITERATION 1 (8/29): two bugs found by backtesting against 2022.
-    (1) The inflation-expectations proxy originally used a 3-year trailing
-    average of *realized* CPI — which rose in lockstep with actual 2022
-    inflation, pulling the "neutral rate" bar up right along with it and
-    muting the very signal this component exists to produce. Widened to a
-    5-year window AND capped the swing it's allowed (+/-1.5pp from a 2%
-    anchor) so "neutral" moves like a slow, anchored expectation rather than
-    chasing the current print.
-    (2) The gap was signed (`fed_funds - neutral`), which only flagged
-    *restrictive* policy (funds above neutral) as bearish. But Jan-Feb 2022
-    was the opposite case — funds still near 0% despite already-hot
-    inflation, i.e. policy far *behind* the curve, which the signed version
-    scored as calm (bullish) rather than as the early warning it should
-    have been. Switched to the absolute gap so being significantly
-    misaligned in *either* direction is treated as bearish.
+    TUNING ITERATION 1 (8/29): fixed the inflation-expectations proxy (was a
+    3-year trailing average of *realized* CPI, which rose in lockstep with
+    2022's own inflation and muted the signal) — widened to 5 years and
+    capped the swing to +/-1.5pp from a 2% anchor. Also switched the gap
+    from signed to absolute, so being far *behind* the curve (funds near 0%
+    while inflation ran hot in Jan-Feb 2022) would flag as bearish, not just
+    being restrictive.
+
+    TUNING ITERATION 2 (9/2): the absolute-value version overcorrected.
+    Backtesting the full 20yr window showed the score running persistently
+    elevated (0.7-0.8) throughout 2011-2014 — appropriate ZIRP stimulus
+    during the post-GFC recovery, not a bear signal — because ANY large gap
+    from "neutral" got flagged regardless of direction or context. Loose
+    policy is only actually dangerous when inflation is ALSO elevated (the
+    Fed is behind the curve); loose policy during low/normal inflation is
+    just appropriate accommodation. Restrictive policy (funds above
+    neutral) is treated as bearish regardless of inflation level, since
+    tightening financial conditions is a more universal headwind for risk
+    assets on its own. Net effect: still catches 2022 (loose + hot
+    inflation), no longer false-flags 2011-2014 (loose + calm inflation).
     """
     if len(fed_funds) < 5:
         return None
@@ -265,10 +270,34 @@ def policy_gap_score(fed_funds: pd.Series, cpi_core: pd.Series) -> Optional[floa
     trailing_infl = cpi_yoy.tail(260).mean() if len(cpi_yoy) >= 52 else cpi_yoy.mean()
     if pd.isna(trailing_infl):
         trailing_infl = 2.0
-    anchored_infl = clamp(trailing_infl, 0.5, 3.5)  # dampen how far "expectations" can drift from target
+    current_infl = cpi_yoy.iloc[-1]
+    # TUNING ITERATION 3 (9/4): pure 5yr trailing average stayed artificially
+    # elevated through 2023-2025 because 2022's spike was still inside the
+    # window, making the Fed's deliberately-restrictive-but-working policy
+    # (inflation actually cooling) look like a persistent warning sign.
+    # Blending in the current reading lets "neutral" fall faster once
+    # inflation genuinely normalizes, instead of staying stuck near its
+    # clamped ceiling for years after a spike rolls out of the average.
+    blended_infl = 0.5 * trailing_infl + 0.5 * current_infl
+    anchored_infl = clamp(blended_infl, 0.5, 3.5)  # dampen how far "expectations" can drift from target
     neutral_rate = 0.5 + anchored_infl
-    gap = abs(fed_funds.iloc[-1] - neutral_rate)
-    return clamp(gap * 0.35)
+    gap = fed_funds.iloc[-1] - neutral_rate
+
+    if gap < 0:
+        # Loose policy: only bearish if inflation is ALSO elevated (Fed
+        # behind the curve). infl_elevation is 0 at/below 2.5% CPI YoY,
+        # maxed by 5.5%+.
+        infl_elevation = clamp((current_infl - 2.5) / 3.0)
+        return clamp(0.5 + abs(gap) * 0.35 * infl_elevation)
+    else:
+        # Restrictive policy: bearish on its own (tightening financial
+        # conditions is a real valuation headwind), but scaled down from
+        # iteration 2's 0.30 - that, combined with the slow-to-adapt neutral
+        # estimate, was flagging 2023-2025's soft-landing disinflation
+        # (restrictive-but-working policy) almost as strongly as a genuine
+        # warning. 0.20 still lets a truly extreme/sustained restrictive
+        # stance reach DEFENSIVE, just not from a moderate, expected gap.
+        return clamp(0.5 + gap * 0.20)
 
 
 def _credit_market_stress_score_baa10y(baa10y: pd.Series) -> Optional[float]:
@@ -477,15 +506,28 @@ def get_bond_rate_risk_level(bear_score: float) -> str:
         return "LOW"
 
 
-# Defensive ETF baskets by bear type — from the later, broader 35-instrument /
-# 15-basket research pass (recovered verbatim from scripts/run_bear_profit_research.py's
-# BASKETS dict: 'Inflation Bear', 'Recession Bear', 'Full Defense'), which
-# supersedes the earlier, narrower bear-positioning research's suggested
-# weights. Cross-checked against the recovered script on 8/25 — exact match.
+# Defensive ETF baskets by bear type — originally recovered verbatim from
+# scripts/run_bear_profit_research.py's BASKETS dict ('Inflation Bear',
+# 'Recession Bear', 'Full Defense'), cross-checked exact match on 8/25.
+#
+# TUNING ITERATION 2 (9/2): reweighted toward SH after finding the original
+# weights only got the portfolio to "lose less," not "hold value," during a
+# correctly-called bear. The research this basket came from (research_
+# bear_profit.md) already showed SH was the ONE instrument positive across
+# every historical bear type tested — including being the single best
+# performer in the 2008 GFC (+89.4%) despite that being TLT's supposed
+# specialty. The original weights (SH only 20-40%) under-used that finding
+# in favor of "less bad" hedges (GLD, SHY) that mostly just avoid losses
+# rather than generate them. Verified against actual 2022 ETF returns
+# (GLD +0.8%, SHY -3.8%, SH +19.7%): the original inflation basket returned
+# only +2.7% blended for the year despite SH alone returning +19.7% —
+# confirms the original weighting was leaving real upside on the table.
+# TLT is kept meaningful in the recession basket specifically (its own
+# proven strength: +25.6% GFC, +10.5% COVID) rather than abandoned for SH.
 DEFENSIVE_BASKETS = {
-    "inflation": {"GLD": 0.40, "SHY": 0.40, "SH": 0.20},
-    "recession": {"TLT": 0.50, "GLD": 0.30, "SHY": 0.20},
-    "mixed": {"TLT": 0.30, "GLD": 0.30, "SH": 0.40},  # "Full Defense" — safest all-weather choice
+    "inflation": {"SH": 0.40, "GLD": 0.30, "SHY": 0.30},
+    "recession": {"SH": 0.30, "TLT": 0.45, "GLD": 0.25},
+    "mixed": {"SH": 0.55, "TLT": 0.25, "GLD": 0.20},  # "Full Defense" — safest all-weather choice
 }
 
 
