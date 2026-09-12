@@ -38,3 +38,6 @@ Thumbs.db
 
 # Images (generated analysis output)
 *.png
+
+# Regenerable API-fetched data caches
+.data_cache/
