@@ -52,15 +52,19 @@ def fetch_fred_daily(friendly_name: str, fred_api_key: str = None) -> pd.Series:
 def load_all(fred_api_key: str = None) -> Dict[str, pd.Series]:
     """Everything the signals module needs, aligned to daily frequency
     (forward-filled from whatever native frequency each series has)."""
+    from breadth import fetch_breadth  # local import: pulls in yahoo_data.py's ticker list
+
     spy = fetch_price_series('SPY')
     vix = fetch_price_series('^VIX')
     baa10y = fetch_fred_daily('baa10y', fred_api_key)
+    breadth = fetch_breadth()
 
     idx = spy.index
     return {
         'spy': spy,
         'vix': vix.reindex(idx, method='ffill'),
         'baa10y': baa10y.reindex(idx, method='ffill'),
+        'breadth': breadth.reindex(idx, method='ffill'),
     }
 
 

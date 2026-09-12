@@ -61,6 +61,20 @@ def trend_release_signal(spy: pd.Series, sma_window: int = 150, buffer_pct: floa
     return (spy >= sma * (1 - buffer_pct)).fillna(False)
 
 
+def breadth_stress_signal(breadth_pct: pd.Series, threshold: float = 40.0) -> pd.Series:
+    """True when S&P 500 breadth (% of constituents above their own 200-day
+    SMA) is below `threshold` - i.e. weakness is broad-based, not confined
+    to a few names. See breadth.py's module docstring for what this is and
+    its survivorship-bias caveat. Checked directly against real bears vs.
+    false alarms: doesn't cleanly separate them on its own (2011's false
+    alarm had LOWER breadth than 2022's real bear - 2011 was a broader but
+    shorter panic), but it's genuinely independent information from
+    trend/drawdown/credit, so it's included as a 4th vote input rather than
+    discarded on that univariate read alone.
+    """
+    return (breadth_pct < threshold).fillna(False)
+
+
 def credit_stress_signal(baa10y: pd.Series, z_lookback: int = 252, z_threshold: float = 1.0,
                           momentum_lookback: int = 10) -> pd.Series:
     """True when the Baa-10Y credit spread is both elevated relative to its

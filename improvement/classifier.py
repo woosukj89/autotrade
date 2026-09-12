@@ -39,42 +39,52 @@ from typing import Dict, List, Tuple
 
 import pandas as pd
 
-from signals import fast_panic_signal, trend_break_signal, trend_release_signal, credit_stress_signal
+from signals import fast_panic_signal, trend_break_signal, trend_release_signal, credit_stress_signal, breadth_stress_signal
 
 
 @dataclass
 class ClassifierParams:
     """Defaults are the best point found on the empirical Pareto frontier
-    (see PROGRESS.md + results/pareto_top50.json) after 85,000+ swept
-    combinations across 3 architectures: coverage=85.1%, FPR=12.3%,
-    defensive_return=27.2%. Meets 2 of 3 SPEC.md targets; FPR is the
-    binding constraint (see PROGRESS.md for why - the frontier shows FPR<5%
-    only achievable near 60% coverage, a hard trade-off, not a tuning gap).
+    after adding breadth as a 4th vote signal (see PROGRESS.md +
+    results/pareto_top50_v7.json) - 110,000+ combos swept total across 4
+    architectures: coverage=85.2%, FPR=11.6%, defensive_return=70.2%. Meets
+    2 of 3 SPEC.md targets, and defensive_return is now far above its
+    5% bar (was 27.2% pre-breadth). FPR remains the binding constraint -
+    the frontier shows FPR<5% only achievable near 65% coverage even with
+    4 independent signals voting (see PROGRESS.md for the full frontier
+    table and what was ruled out along the way).
     """
-    drawdown_lookback: int = 20
-    drawdown_threshold: float = -0.08
+    drawdown_lookback: int = 10
+    drawdown_threshold: float = -0.10
 
-    sma_window: int = 150
-    entry_buffer_pct: float = 0.01
-    exit_buffer_pct: float = 0.0
-    trend_confirm_days: int = 30
+    sma_window: int = 200
+    entry_buffer_pct: float = 0.015
+    exit_buffer_pct: float = 0.005
+    trend_confirm_days: int = 20
 
-    credit_z_lookback: int = 252
-    credit_z_threshold: float = 0.5
+    credit_z_lookback: int = 189
+    credit_z_threshold: float = 1.25
     credit_momentum_lookback: int = 5
 
-    panic_cooldown_days: int = 5
-    min_defensive_days: int = 20
+    panic_cooldown_days: int = 7
+    min_defensive_days: int = 0
     fast_panic_confirm_days: int = 1
-    combo_confirm_days: int = 2
-    require_credit_calm_to_exit: bool = False
+    combo_confirm_days: int = 1
+    require_credit_calm_to_exit: bool = True
 
     # v6: voting architecture (see classify() docstring) - an extreme,
     # rare drawdown still fires alone as a safety valve; everything else
-    # requires >= vote_threshold of {fast_panic, trend_break, credit_stress}
-    # to agree, instead of any single one being sufficient.
-    extreme_drawdown_threshold: float = -0.20
+    # requires >= vote_threshold of {fast_panic, trend_break, credit_stress,
+    # breadth_stress} to agree, instead of any single one being sufficient.
+    extreme_drawdown_threshold: float = -0.16
     vote_threshold: int = 2
+
+    # v7: breadth (% of S&P 500 above own 200d SMA) - independent
+    # information from trend/drawdown/credit (see breadth.py). Not a clean
+    # standalone discriminator (checked directly - 2011's false alarm had
+    # LOWER breadth than 2022's real bear) but a real, measured improvement
+    # once added as a 4th vote input (see PROGRESS.md v7 section).
+    breadth_threshold: float = 55.0
 
 
 def compute_raw_signals(data: Dict[str, pd.Series], p: ClassifierParams) -> pd.DataFrame:
@@ -86,6 +96,10 @@ def compute_raw_signals(data: Dict[str, pd.Series], p: ClassifierParams) -> pd.D
     df['trend_release'] = trend_release_signal(spy, p.sma_window, p.exit_buffer_pct)
     df['credit_stress'] = credit_stress_signal(
         baa10y, p.credit_z_lookback, p.credit_z_threshold, p.credit_momentum_lookback)
+    if 'breadth' in data:
+        df['breadth_stress'] = breadth_stress_signal(data['breadth'], p.breadth_threshold)
+    else:
+        df['breadth_stress'] = False
     return df
 
 
@@ -116,7 +130,10 @@ def classify(data: Dict[str, pd.Series], p: ClassifierParams = None) -> Tuple[pd
     # one-off blips - real crashes accelerate over consecutive days, blips
     # don't - at the cost of a small amount of entry latency.
     fast_panic_run = run_length(sig['fast_panic'])
-    votes = sig['fast_panic'].astype(int) + sig['trend_break'].astype(int) + sig['credit_stress'].astype(int)
+    # v7: 4-way vote (was 3-way) - breadth_stress added as independent
+    # information (see breadth.py / signals.breadth_stress_signal).
+    votes = (sig['fast_panic'].astype(int) + sig['trend_break'].astype(int)
+             + sig['credit_stress'].astype(int) + sig['breadth_stress'].astype(int))
     vote_flag = votes >= p.vote_threshold
     vote_run = run_length(vote_flag)
 

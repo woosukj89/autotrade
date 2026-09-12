@@ -123,11 +123,60 @@ same time it hurts coverage. This is consistent, repeated, and explainable
 real bears in 20 years - a genuinely small sample to calibrate a <5% FPR
 rule against), not a tuning failure.
 
-**`ClassifierParams` defaults are now set to the best frontier point found**
-(coverage 85.1%, FPR 12.3%, defret 27.2% — 2 of 3 targets pass; per-bear:
-2008 coverage 91.9%/defret 90.2%, 2020 coverage 75.0%/defret 31.3%, 2022
-coverage 74.0%/defret 12.2%). Full top-50 saved in
-`results/pareto_top50.json`.
+**`ClassifierParams` defaults were set to this frontier point** (coverage
+85.1%, FPR 12.3%, defret 27.2%; full top-50 in `results/pareto_top50.json`)
+— **since superseded by the v7 (breadth) defaults below**, kept here as
+the pre-breadth baseline for comparison.
+
+## Iteration 10 (v7): breadth as a genuinely independent 4th signal
+
+Per user direction after reviewing the frontier: added S&P 500 breadth
+(`breadth.py`, `signals.breadth_stress_signal`) - % of the 418-ticker
+curated universe from `data/yahoo_data.py` trading above their own 200-day
+SMA, batch-fetched via yfinance (418 tickers, 36s, 394/418 had usable
+data). Caveat stated plainly: uses the CURRENT constituent list applied
+across the full 20-year history (real survivorship bias - a stock removed
+from the index for poor performance won't be counted as weak during the
+period it was actually struggling); a true point-in-time membership feed
+would be a materially bigger data source than what's available here.
+
+**Checked directly before integrating, same discipline as credit z-score
+and VIX**: breadth does NOT cleanly separate real bears from false alarms
+on its own - 2011's false-positive episode had *lower* mean breadth
+(27.7%) than 2022's real bear (40.6%), because 2011 was a broader but
+shorter panic while 2022's decline, though longer and index-significant,
+was more concentrated in mega-cap names that dominate cap-weighted SPY.
+Included anyway as a 4th vote input (genuinely independent information
+from trend/drawdown/credit) rather than discarded on that univariate read,
+since ensembles can extract value from imperfect individual signals.
+
+`classify()`'s vote now requires >=`vote_threshold` of 4 signals (was 3):
+{fast_panic, trend_break, credit_stress, breadth_stress}.
+
+**Result - a real, measured improvement, not just noise:**
+
+| Coverage floor | 3-signal best FPR | 4-signal best FPR | 3-signal defret | 4-signal defret |
+|---|---|---|---|---|
+| ≥85% | 12.3% | 11.9% | +27.2% | **+114.4%** |
+| ≥75% | 8.5% | 7.9% | +3.0% | +6.3% |
+| ≥65% | 5.7% | **5.0%** | -28.7% | -2.7% |
+| FPR≤5% best | cov 60.1% | cov 60.9% | -25.9% | -19.6% |
+
+Every tier improved, most dramatically defensive-return at the high-
+coverage end (27.2%→114.4%) and FPR at the 65%-coverage tier (5.7%→5.0%,
+now within a rounding error of the target, with defret nearly breakeven).
+`ClassifierParams` defaults updated to the new best combined-loss point:
+**coverage=85.2%, FPR=11.6%, defensive_return=70.2%** (2 of 3 targets pass,
+comfortably now on the return target). Per-bear: 2008 coverage 91.9%/
+defret 89.4%, 2020 coverage 75.0%/defret 31.3%, 2022 coverage 74.5%/defret
+24.5% (2022's defensive return roughly doubled vs. the pre-breadth
+default). Top 50 saved in `results/pareto_top50_v7.json`.
+
+**Still hasn't cracked FPR<5% at coverage>=85%** - the frontier moved
+favorably but the fundamental shape (tight FPR costs coverage, and now
+also costs defensive-return, which frequently goes negative in the
+tightest-FPR region) persists even with a 4th independent signal. 110,000+
+total combos swept across 4 architectures.
 
 ### What would plausibly move the frontier further (not yet attempted)
 
