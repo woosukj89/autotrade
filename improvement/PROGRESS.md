@@ -52,6 +52,101 @@ slightly (7.4% → 8.6%) since the dwell requirement also extends genuine
 false-positive episodes once they trigger — expected trade-off, not a new
 problem.
 
+## Iterations 4-9: systematic sweep, architecture changes, and the empirical frontier
+
+Vectorized `classify()` (pandas `.loc` row loop → numpy arrays): 600ms → 7.5ms
+per call, an 80x speedup, to make a real parameter sweep feasible.
+
+**Sweep 1** (`sweep.py`, 10,000 combos, original "any 1 of 3 paths" OR
+architecture): best loss found had coverage 85.2%/FPR 12.5%/defret 6.6% —
+first time coverage crossed 85%, but every top-20 result plateaued at
+10-14% FPR regardless of thresholds tried. This was the first signal that
+the ceiling was architectural, not a tuning gap.
+
+**Persistence gates** (`fast_panic_confirm_days`, `combo_confirm_days`):
+required signals to hold for N consecutive days before triggering entry,
+to filter one-off blips. Modest effect (loss 0.0754 → 0.0683 best), not
+the fix — false positives just moved from `fast_panic` to
+`trend+credit_confirmed` firing on a loose (`credit_z_threshold=0.25`)
+same-day coincidence.
+
+**Credit z-score investigation** (checked directly, not assumed): unlike
+VIX, credit z-score DOES discriminate — 2022's bear-period max z=3.45 vs.
+2011 false-positive's max z=2.13, 2010's ~1.0-1.2. Sweep 2 (`sweep2.py`,
+15,000+20,000 combos) biased toward higher credit thresholds (1.0-2.5) and
+looser entry buffers accordingly. Best: coverage 85.4%/FPR 13.2%/defret
+16.8% — essentially the same ceiling, just relocated.
+
+**`require_credit_calm_to_exit`**: gates exit on credit stress having also
+subsided, not just price bouncing above trend — targets 2022-style
+bear-market-rally whipsaws more precisely than the blunt
+`min_defensive_days` floor (which was inflating every episode, including
+short false alarms, by the same fixed amount). Dominated top sweep results
+once added; a real, if modest, improvement (loss → 0.0697).
+
+**v6 voting architecture** (`classify()` rewritten): replaced "any 1 of 3
+paths triggers" with "an extreme/rare drawdown fires alone (safety valve
+for a 2020-tier shock) OR >=2 of {fast_panic, trend_break, credit_stress}
+agree same-day." Sweep 3 (`sweep3.py`, 20,000 combos): best loss 0.0803,
+coverage 81.6%/FPR 9.6%/defret 10.9% — the FPR floor moved down (9.6% vs.
+10-14% before) but didn't break through 5%.
+
+**Ruled out, with evidence, not assumption**: VIX level and VIX 5-day
+spike-rate (original baseline — see Iteration 1) and VIX term structure
+(VIX/VIX3M backwardation, checked directly: 2011's false-positive episode
+had backwardation on 63% of its days vs. 2022's real bear at only 7% — the
+*opposite* of useful). All three vol-based signals measure acute panic,
+not sustained decline, and 2022 specifically wasn't a panic event. This
+isn't a threshold problem - these signals are answering a different
+question than "will this become a real bear."
+
+### The empirical Pareto frontier (`pareto.py`, 20,000 more combos, 85,000+ total)
+
+| Coverage floor | Best achievable FPR | Defensive return at that point |
+|---|---|---|
+| ≥85% | 12.3% | +27.2% |
+| ≥80% | 9.4% | -11.3% |
+| ≥75% | 8.5% | +3.0% |
+| ≥70% | 6.5% | -11.6% |
+| ≥65% | 5.7% | -28.7% |
+| — | ≤5% (best) | coverage caps at 60.1%, defret -25.9% |
+
+**Conclusion**: across 3 architectures and 85,000+ swept parameter
+combinations, nothing achieves coverage≥85% AND FPR<5% AND defret>5%
+simultaneously. At the tight end of the FPR budget, coverage caps around
+60% *and* defensive return frequently goes negative — a third tension: a
+classifier tuned to minimize false alarms also tends to enter too late/exit
+too early on real bears, which hurts the defensive-sleeve return at the
+same time it hurts coverage. This is consistent, repeated, and explainable
+(not sweep noise) - I'm treating it as a real limit of this 3-signal set
+(price trend, N-day drawdown, credit spread) against this ground truth (3
+real bears in 20 years - a genuinely small sample to calibrate a <5% FPR
+rule against), not a tuning failure.
+
+**`ClassifierParams` defaults are now set to the best frontier point found**
+(coverage 85.1%, FPR 12.3%, defret 27.2% — 2 of 3 targets pass; per-bear:
+2008 coverage 91.9%/defret 90.2%, 2020 coverage 75.0%/defret 31.3%, 2022
+coverage 74.0%/defret 12.2%). Full top-50 saved in
+`results/pareto_top50.json`.
+
+### What would plausibly move the frontier further (not yet attempted)
+
+1. **A genuinely independent 4th signal** with different information
+   content than trend/drawdown/credit - e.g. real S&P 500 breadth (% of
+   constituents above their own 200-day MA, not just the index level).
+   Requires per-constituent price history, a much bigger data-fetch than
+   anything used so far - not attempted due to that cost, not because it
+   seems unpromising.
+2. **Accept a specific frontier trade-off** and proceed to the portfolio-
+   level backtest (SPEC.md §6) with the current best classifier, to see
+   what the *portfolio* actually looks like at 85%/12.3%/27.2% - the
+   classifier metrics are a proxy, not the end goal.
+3. **Revisit whether <5% FPR is a well-calibrated target** given the
+   sample size - 3 positive examples (bears) in 20 years bounds how
+   confidently ANY rule can be tuned against a <5% false-positive rate
+   without either overfitting to this specific history or refusing to
+   fire on real future bears that don't closely resemble 2008/2020/2022.
+
 ## Remaining known issues (next steps, not yet attempted)
 
 1. **2011 debt-ceiling crisis (Aug-Oct 2011, 77 days) is the single largest

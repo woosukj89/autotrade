@@ -3,20 +3,32 @@ Binary bear/not-bear classifier: combines the signals in signals.py into a
 single state machine. Output is a boolean pd.Series (True = DEFENSIVE), not
 a continuous score - per SPEC.md, there is no partial allocation.
 
-Entry (NOT_IN_BEAR -> IN_BEAR), any ONE of:
-  (a) fast_panic fires on its own (no confirmation delay - it's built to be
-      selective already: a real N-day drawdown or a real VIX spike/level).
-  (b) trend_break sustained for `trend_confirm_days` consecutive days (the
-      slow-grind path - no single-day panic, just a confirmed trend down).
-  (c) trend_break AND credit_stress both true on the same day (a faster
-      confirmed-combo path: trend turning down WITH independent credit
-      confirmation, don't need to wait out the full sustain period).
+v6 ARCHITECTURE (voting, not "any 1 of 3 paths" OR logic): an earlier
+version let fast_panic, a sustained trend break, or a trend+credit
+same-day coincidence EACH independently trigger entry. That plateaued at
+~10-13% false-positive rate across 45,000+ swept parameter combinations
+(see PROGRESS.md) - any single one of 3 fairly noisy signals was too easy
+to satisfy by chance. Replaced with:
+
+Entry (NOT_IN_BEAR -> IN_BEAR), either of:
+  (a) extreme_panic fires alone, no confirmation delay - a rare, very deep
+      N-day drawdown (default -20%), reserved as a safety valve for a
+      genuine fast crash so voting's extra confirmation delay can't cost
+      real coverage on a 2020-tier event.
+  (b) >= `vote_threshold` (default 2) of {fast_panic, trend_break,
+      credit_stress} agree on the SAME day, persisted `combo_confirm_days`.
+      Two independently-noisy signals coinciding is a much stronger filter
+      than any one alone.
+  (c) trend_break sustained for `trend_confirm_days` consecutive days with
+      NO other corroboration at all - a pure fallback for a slow grind
+      where neither panic nor credit ever confirms.
 
 Exit (IN_BEAR -> NOT_IN_BEAR), ALL of:
   - trend_release is true (price back within 1% of its SMA)
   - fast_panic has been false for `panic_cooldown_days` consecutive days
-  (deliberately no credit-spread condition on exit - credit tends to lag
-  on the way down AND the way up; gating the exit on it would cost coverage)
+  - if `require_credit_calm_to_exit`: credit_stress has also subsided
+    (targets bear-market-rally whipsaws, e.g. 2022 Mar-Apr/Jul-Aug, where
+    price bounced above trend but credit conditions were still stressed)
 
 This asymmetry (harder to enter, easier to exit) is deliberate per SPEC.md
 §5.3: protects the false-positive budget on entry, protects coverage
@@ -32,26 +44,44 @@ from signals import fast_panic_signal, trend_break_signal, trend_release_signal,
 
 @dataclass
 class ClassifierParams:
-    drawdown_lookback: int = 10
-    drawdown_threshold: float = -0.12
+    """Defaults are the best point found on the empirical Pareto frontier
+    (see PROGRESS.md + results/pareto_top50.json) after 85,000+ swept
+    combinations across 3 architectures: coverage=85.1%, FPR=12.3%,
+    defensive_return=27.2%. Meets 2 of 3 SPEC.md targets; FPR is the
+    binding constraint (see PROGRESS.md for why - the frontier shows FPR<5%
+    only achievable near 60% coverage, a hard trade-off, not a tuning gap).
+    """
+    drawdown_lookback: int = 20
+    drawdown_threshold: float = -0.08
 
     sma_window: int = 150
-    entry_buffer_pct: float = 0.03
-    exit_buffer_pct: float = 0.01
-    trend_confirm_days: int = 10
+    entry_buffer_pct: float = 0.01
+    exit_buffer_pct: float = 0.0
+    trend_confirm_days: int = 30
 
     credit_z_lookback: int = 252
-    credit_z_threshold: float = 1.0
-    credit_momentum_lookback: int = 10
+    credit_z_threshold: float = 0.5
+    credit_momentum_lookback: int = 5
 
     panic_cooldown_days: int = 5
     min_defensive_days: int = 20
+    fast_panic_confirm_days: int = 1
+    combo_confirm_days: int = 2
+    require_credit_calm_to_exit: bool = False
+
+    # v6: voting architecture (see classify() docstring) - an extreme,
+    # rare drawdown still fires alone as a safety valve; everything else
+    # requires >= vote_threshold of {fast_panic, trend_break, credit_stress}
+    # to agree, instead of any single one being sufficient.
+    extreme_drawdown_threshold: float = -0.20
+    vote_threshold: int = 2
 
 
 def compute_raw_signals(data: Dict[str, pd.Series], p: ClassifierParams) -> pd.DataFrame:
     spy, vix, baa10y = data['spy'], data['vix'], data['baa10y']
     df = pd.DataFrame(index=spy.index)
     df['fast_panic'] = fast_panic_signal(spy, p.drawdown_lookback, p.drawdown_threshold)
+    df['extreme_panic'] = fast_panic_signal(spy, p.drawdown_lookback, p.extreme_drawdown_threshold)
     df['trend_break'] = trend_break_signal(spy, p.sma_window, p.entry_buffer_pct)
     df['trend_release'] = trend_release_signal(spy, p.sma_window, p.exit_buffer_pct)
     df['credit_stress'] = credit_stress_signal(
@@ -60,54 +90,103 @@ def compute_raw_signals(data: Dict[str, pd.Series], p: ClassifierParams) -> pd.D
 
 
 def classify(data: Dict[str, pd.Series], p: ClassifierParams = None) -> Tuple[pd.Series, List[dict]]:
-    """Returns (defensive: bool Series, transitions: list of {date, to, reason})."""
+    """Returns (defensive: bool Series, transitions: list of {date, to, reason}).
+
+    Performance note: iterates numpy arrays, not pandas .loc lookups - the
+    original row-by-row .loc version took ~600ms/call (dominant cost, vs.
+    ~20ms for scoring), which was the bottleneck for the sweep this was
+    written to support. This version is 1-2 orders of magnitude faster for
+    the same logic - state-machine loops don't vectorize away entirely, but
+    all the per-row pandas overhead does.
+    """
     p = p or ClassifierParams()
     sig = compute_raw_signals(data, p)
 
-    trend_break_run = (
-        sig['trend_break']
-        .groupby((~sig['trend_break']).cumsum())
-        .cumcount() + 1
-    ) * sig['trend_break']
+    def run_length(flag: pd.Series) -> pd.Series:
+        """Consecutive-True run length ending at each row (0 where False)."""
+        return (flag.groupby((~flag).cumsum()).cumcount() + 1) * flag
 
-    panic_quiet_run = (
-        (~sig['fast_panic'])
-        .groupby(sig['fast_panic'].cumsum())
-        .cumcount() + 1
-    ) * (~sig['fast_panic'])
+    trend_break_run = run_length(sig['trend_break'])
+    panic_quiet_run = run_length(~sig['fast_panic'])
+    # Persistence gates (TUNING v4): a single-day fast_panic or a single-day
+    # trend+credit coincidence turned out to be the dominant false-positive
+    # source (see PROGRESS.md - a 10000-combo sweep plateaued at ~10-14%
+    # FPR regardless of thresholds, pointing at an architectural gap, not a
+    # tuning one). Requiring these to persist a couple of days filters
+    # one-off blips - real crashes accelerate over consecutive days, blips
+    # don't - at the cost of a small amount of entry latency.
+    fast_panic_run = run_length(sig['fast_panic'])
+    votes = sig['fast_panic'].astype(int) + sig['trend_break'].astype(int) + sig['credit_stress'].astype(int)
+    vote_flag = votes >= p.vote_threshold
+    vote_run = run_length(vote_flag)
 
-    defensive = pd.Series(False, index=sig.index)
+    dates = sig.index
+    fast_panic = sig['fast_panic'].to_numpy()
+    extreme_panic = sig['extreme_panic'].to_numpy()
+    trend_break = sig['trend_break'].to_numpy()
+    trend_release = sig['trend_release'].to_numpy()
+    credit_stress = sig['credit_stress'].to_numpy()
+    trend_break_run_arr = trend_break_run.to_numpy()
+    panic_quiet_run_arr = panic_quiet_run.to_numpy()
+    fast_panic_run_arr = fast_panic_run.to_numpy()
+    vote_run_arr = vote_run.to_numpy()
+
+    n = len(dates)
+    defensive_arr = [False] * n
     transitions = []
     in_bear = False
     days_in_state = 0
+    trend_confirm_days = p.trend_confirm_days
+    min_defensive_days = p.min_defensive_days
+    panic_cooldown_days = p.panic_cooldown_days
+    combo_confirm_days = p.combo_confirm_days
+    require_credit_calm_to_exit = p.require_credit_calm_to_exit
 
-    for date in sig.index:
-        row = sig.loc[date]
+    for i in range(n):
         days_in_state += 1
         if not in_bear:
+            # v6 voting architecture: an extreme (rare) drawdown fires alone
+            # as a safety valve (no confirmation delay - reserved for a
+            # genuine crash, e.g. 1987/2020-tier moves). Everything else
+            # requires >= vote_threshold of {fast_panic, trend_break,
+            # credit_stress} to agree, persisted `combo_confirm_days` -
+            # replaces the old "any 1 of 3 paths" OR logic that plateaued
+            # at ~10-13% FPR across 45,000 swept combos (see PROGRESS.md).
+            # trend_sustained kept as a pure-fallback for a slow grind with
+            # no corroboration at all, gated by a much longer confirm window.
             reason = None
-            if row['fast_panic']:
-                reason = 'fast_panic'
-            elif trend_break_run.loc[date] >= p.trend_confirm_days:
+            if extreme_panic[i]:
+                reason = 'extreme_panic'
+            elif vote_run_arr[i] >= combo_confirm_days:
+                reason = 'vote_2of3'
+            elif trend_break_run_arr[i] >= trend_confirm_days:
                 reason = 'trend_sustained'
-            elif row['trend_break'] and row['credit_stress']:
-                reason = 'trend+credit_confirmed'
             if reason:
                 in_bear = True
                 days_in_state = 0
-                transitions.append({'date': date.strftime('%Y-%m-%d'), 'to': 'DEFENSIVE', 'reason': reason})
+                transitions.append({'date': dates[i].strftime('%Y-%m-%d'), 'to': 'DEFENSIVE', 'reason': reason})
         else:
             # min_defensive_days: bear-market rallies (sharp counter-trend
             # bounces within a real bear, e.g. 2022 Mar-Apr and Jul-Aug) can
             # satisfy trend_release within days of entry, causing whipsaw
             # exits mid-bear. Require a minimum dwell time before exit is
             # even considered - this directly targets that failure mode.
-            if days_in_state >= p.min_defensive_days and row['trend_release'] and panic_quiet_run.loc[date] >= p.panic_cooldown_days:
+            # require_credit_calm_to_exit (v5): min_defensive_days was
+            # found to inflate EVERY episode's length by the same fixed
+            # floor, including short-lived pure-noise false alarms that
+            # didn't need it - only real bear-rally whipsaws did. Gating
+            # exit on credit stress having also subsided is more targeted:
+            # it only holds the position open when credit conditions are
+            # still genuinely stressed (which is what distinguishes a real
+            # bear-market rally from a false alarm clearing out).
+            credit_calm_ok = (not require_credit_calm_to_exit) or (not credit_stress[i])
+            if days_in_state >= min_defensive_days and trend_release[i] and credit_calm_ok and panic_quiet_run_arr[i] >= panic_cooldown_days:
                 in_bear = False
                 days_in_state = 0
-                transitions.append({'date': date.strftime('%Y-%m-%d'), 'to': 'AGGRESSIVE', 'reason': 'trend_release+panic_quiet'})
-        defensive.loc[date] = in_bear
+                transitions.append({'date': dates[i].strftime('%Y-%m-%d'), 'to': 'AGGRESSIVE', 'reason': 'trend_release+panic_quiet'})
+        defensive_arr[i] = in_bear
 
+    defensive = pd.Series(defensive_arr, index=dates)
     return defensive, transitions
 
 

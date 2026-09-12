@@ -45,7 +45,8 @@ def defensive_sleeve_returns(index: pd.DatetimeIndex) -> pd.Series:
         return -spy_ret
 
 
-def score(defensive: pd.Series, gt: dict, window_start=WINDOW_START, window_end=WINDOW_END) -> dict:
+def score(defensive: pd.Series, gt: dict, window_start=WINDOW_START, window_end=WINDOW_END,
+          _def_ret_cache: pd.Series = None) -> dict:
     idx = defensive.index
     in_window = (idx >= pd.Timestamp(window_start)) & (idx <= pd.Timestamp(window_end))
     defensive_w = defensive[in_window]
@@ -67,8 +68,14 @@ def score(defensive: pd.Series, gt: dict, window_start=WINDOW_START, window_end=
     covered_corr_days = int((defensive_w & corr_mask).sum())
     corr_coverage = covered_corr_days / total_corr_days if total_corr_days else float('nan')
 
-    def_ret = defensive_sleeve_returns(idx_w)
-    defensive_daily_rets = def_ret[defensive_w]
+    # def_ret doesn't depend on classifier params - callers doing a sweep
+    # should precompute once (on the FULL index) and pass via
+    # _def_ret_cache to avoid re-reading price CSVs on every one of
+    # thousands of calls. Reindex to idx_w since the cache may span a wider
+    # range (e.g. includes pre-window lookback data) than the scoring window.
+    def_ret = (_def_ret_cache.reindex(idx_w) if _def_ret_cache is not None
+               else defensive_sleeve_returns(idx_w))
+    defensive_daily_rets = def_ret[defensive_w.to_numpy()]
     if len(defensive_daily_rets) > 0:
         defensive_cum_return = float((1 + defensive_daily_rets).prod() - 1)
     else:
