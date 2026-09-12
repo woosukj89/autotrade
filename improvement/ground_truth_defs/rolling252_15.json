@@ -1,0 +1,283 @@
+{
+  "style": "rolling",
+  "threshold": 0.15,
+  "window": 252,
+  "window_range": [
+    "2005-01-01",
+    "2025-12-31"
+  ],
+  "bears": [
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2008-01-18",
+      "peak_price": 110.86796569824219,
+      "trough_date": "2008-01-22",
+      "trough_price": 93.1082534790039,
+      "recovery_date": "2008-01-23",
+      "depth_pct": 16.0187950661747,
+      "decline_days": 4
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2008-03-06",
+      "peak_price": 110.86796569824219,
+      "trough_date": "2008-03-10",
+      "trough_price": 91.1708984375,
+      "recovery_date": "2008-03-18",
+      "depth_pct": 17.766238549332815,
+      "decline_days": 4
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2008-03-19",
+      "peak_price": 110.86796569824219,
+      "trough_date": "2008-03-19",
+      "trough_price": 92.82337951660156,
+      "recovery_date": "2008-03-20",
+      "depth_pct": 16.275743915743845,
+      "decline_days": 0
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2008-03-28",
+      "peak_price": 110.86796569824219,
+      "trough_date": "2008-03-28",
+      "trough_price": 94.13472747802734,
+      "recovery_date": "2008-03-31",
+      "depth_pct": 15.092942415628855,
+      "decline_days": 0
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2008-06-26",
+      "peak_price": 110.86796569824219,
+      "trough_date": "2009-03-09",
+      "trough_price": 49.68056106567383,
+      "recovery_date": "2009-09-10",
+      "depth_pct": 55.18943569245853,
+      "decline_days": 256
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2010-07-01",
+      "peak_price": 91.28148651123047,
+      "trough_date": "2010-07-02",
+      "trough_price": 76.9505844116211,
+      "recovery_date": "2010-07-07",
+      "depth_pct": 15.699680896242008,
+      "decline_days": 1
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2011-08-08",
+      "peak_price": 104.2678451538086,
+      "trough_date": "2011-08-08",
+      "trough_price": 86.22103881835938,
+      "recovery_date": "2011-08-11",
+      "depth_pct": 17.308122469422706,
+      "decline_days": 0
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2011-08-18",
+      "peak_price": 104.2678451538086,
+      "trough_date": "2011-08-19",
+      "trough_price": 86.51289367675781,
+      "recovery_date": "2011-08-23",
+      "depth_pct": 17.028213684535174,
+      "decline_days": 1
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2011-09-22",
+      "peak_price": 104.2678451538086,
+      "trough_date": "2011-09-22",
+      "trough_price": 87.1303482055664,
+      "recovery_date": "2011-09-26",
+      "depth_pct": 16.436032530414487,
+      "decline_days": 0
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2011-09-30",
+      "peak_price": 104.2678451538086,
+      "trough_date": "2011-10-03",
+      "trough_price": 84.86832427978516,
+      "recovery_date": "2011-10-06",
+      "depth_pct": 18.6054682969679,
+      "decline_days": 3
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2018-12-20",
+      "peak_price": 259.9292907714844,
+      "trough_date": "2018-12-24",
+      "trough_price": 209.63575744628906,
+      "recovery_date": "2018-12-27",
+      "depth_pct": 19.34892877055962,
+      "decline_days": 4
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2019-01-03",
+      "peak_price": 259.9292907714844,
+      "trough_date": "2019-01-03",
+      "trough_price": 218.46531677246094,
+      "recovery_date": "2019-01-04",
+      "depth_pct": 15.952020596045982,
+      "decline_days": 0
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2020-03-09",
+      "peak_price": 308.40350341796875,
+      "trough_date": "2020-03-23",
+      "trough_price": 204.41824340820312,
+      "recovery_date": "2020-04-17",
+      "depth_pct": 18.94841024421108,
+      "decline_days": 14
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2020-04-20",
+      "peak_price": 308.40350341796875,
+      "trough_date": "2020-04-21",
+      "trough_price": 250.34478759765625,
+      "recovery_date": "2020-04-27",
+      "depth_pct": 18.825569481818597,
+      "decline_days": 1
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2020-04-28",
+      "peak_price": 308.40350341796875,
+      "trough_date": "2020-05-01",
+      "trough_price": 259.2843322753906,
+      "recovery_date": "2020-05-07",
+      "depth_pct": 15.052871796160726,
+      "decline_days": 3
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2020-05-13",
+      "peak_price": 308.40350341796875,
+      "trough_date": "2020-05-13",
+      "trough_price": 258.1932678222656,
+      "recovery_date": "2020-05-15",
+      "depth_pct": 16.280695594970236,
+      "decline_days": 0
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2022-05-09",
+      "peak_price": 449.4864501953125,
+      "trough_date": "2022-05-12",
+      "trough_price": 370.30706787109375,
+      "recovery_date": "2022-05-17",
+      "depth_pct": 17.615521511229858,
+      "decline_days": 3
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2022-05-18",
+      "peak_price": 449.4864501953125,
+      "trough_date": "2022-05-19",
+      "trough_price": 367.5887756347656,
+      "recovery_date": "2022-05-26",
+      "depth_pct": 18.220276612334008,
+      "decline_days": 1
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2022-06-09",
+      "peak_price": 449.4864501953125,
+      "trough_date": "2022-06-16",
+      "trough_price": 346.05975341796875,
+      "recovery_date": "2022-07-28",
+      "depth_pct": 23.009969873931105,
+      "decline_days": 7
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2022-08-29",
+      "peak_price": 449.4864501953125,
+      "trough_date": "2022-09-06",
+      "trough_price": 370.4089660644531,
+      "recovery_date": "2022-09-09",
+      "depth_pct": 17.592851596860893,
+      "decline_days": 8
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2022-09-13",
+      "peak_price": 449.4864501953125,
+      "trough_date": "2022-10-12",
+      "trough_price": 339.3785095214844,
+      "recovery_date": "2022-11-23",
+      "depth_pct": 24.496387071508746,
+      "decline_days": 29
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2022-11-28",
+      "peak_price": 449.4864501953125,
+      "trough_date": "2022-11-29",
+      "trough_price": 376.1851806640625,
+      "recovery_date": "2022-11-30",
+      "depth_pct": 16.307781802854983,
+      "decline_days": 1
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2022-12-05",
+      "peak_price": 449.4864501953125,
+      "trough_date": "2022-12-07",
+      "trough_price": 374.2148742675781,
+      "recovery_date": "2022-12-13",
+      "depth_pct": 16.746127918878777,
+      "decline_days": 2
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2022-12-14",
+      "peak_price": 449.4864501953125,
+      "trough_date": "2022-12-28",
+      "trough_price": 360.1562194824219,
+      "recovery_date": "2023-01-11",
+      "depth_pct": 19.873842843110072,
+      "decline_days": 14
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2023-03-10",
+      "peak_price": 435.6304016113281,
+      "trough_date": "2023-03-13",
+      "trough_price": 368.47503662109375,
+      "recovery_date": "2023-03-14",
+      "depth_pct": 15.415674558487488,
+      "decline_days": 3
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2025-04-04",
+      "peak_price": 602.61328125,
+      "trough_date": "2025-04-08",
+      "trough_price": 489.591796875,
+      "recovery_date": "2025-04-09",
+      "depth_pct": 18.755226260622678,
+      "decline_days": 4
+    },
+    {
+      "kind": "rolling252_0.15",
+      "peak_date": "2025-04-21",
+      "peak_price": 602.61328125,
+      "trough_date": "2025-04-21",
+      "trough_price": 506.7503662109375,
+      "recovery_date": "2025-04-22",
+      "depth_pct": 15.907866291996447,
+      "decline_days": 0
+    }
+  ],
+  "n_episodes": 27,
+  "total_decline_days": 363
+}

@@ -1,5 +1,35 @@
 # Spec: Fast, Precise Bear-Market Detection with Binary Allocation
 
+## 0. Reframe (9/17) — after 110,000+ combos hit a real ceiling
+
+Sections 1-6 below are the original spec and stand as the methodology for
+Steps 1-2. What changed: after exhausting the fixed 20%-rule ground truth
+(only 3 true bears in 20 years — provably too small a sample to calibrate
+a <5% false-positive classifier against, confirmed empirically across 4
+signal architectures and 110,000+ swept parameter combinations — see
+PROGRESS.md), the definition of "bear" itself is now a variable to search
+over, not a fixed constant. New process:
+
+1. **Define bear — several candidate definitions, not one.** Still
+   mechanical/reproducible (no hand-picked dates), but now parameterized:
+   drawdown threshold (try 5/10/15/20%) x peak style (all-time high vs. a
+   rolling-window high, which resets faster and produces more frequent,
+   shorter, more tactically-relevant episodes). See `ground_truth_v2.py`.
+2. **Per definition, find a classifier** meeting a *relaxed* bar — 80%
+   coverage, <5% FPR (was 85%/<5%) — using the same signal/classifier
+   toolkit already built (`signals.py`, `classifier.py`, `sweep.py`).
+3. **Portfolio-level backtest, not just classifier metrics.** Wire the
+   winning classifier per definition into an actual `Strategy`
+   (`backtest/backtest.py`'s engine, same pattern as the archived
+   `BondRateAdaptiveStrategy`) — 100% aggressive or 100% defensive, no
+   partial allocation, exactly per the original binary-allocation
+   direction. Run the real 20-year backtest. **The definition+classifier
+   combination that maximizes actual portfolio growth wins** — coverage/FPR
+   are now a *filter* (only sufficiently-good classifiers are worth
+   backtesting), not the final objective.
+
+---
+
 ## 1. Context — why this exists
 
 The prior approach (`archive/bond_rate_v2/`) mapped a continuous bear score to a

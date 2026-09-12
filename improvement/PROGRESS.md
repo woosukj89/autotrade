@@ -1,5 +1,83 @@
 # Progress Log
 
+## Iteration 11-13 (reframe, SPEC.md §0): multi-definition ground truth → real portfolio growth
+
+Per explicit direction after the classifier-metric ceiling: stopped treating
+one fixed bear definition + classifier metrics as the end goal, and ran the
+actual 3-step process end to end.
+
+**Step 1 — several bear definitions** (`ground_truth_v2.py`), all mechanical:
+`alltime_{05,10,15,20}` (the original all-time-high peak-to-trough rule at
+4 thresholds) and `rolling{126,252}_{10,15}` (a genuinely different style -
+peak is a trailing-window high, not all-time, so episodes reset faster and
+are more frequent/shorter - the "define your own" addition). Episode counts
+ranged 3 (alltime_20, the original strict rule) to 42 (rolling126_10).
+
+**Step 2 — per-definition classifier calibration** (`sweep_multi_def.py`,
+relaxed to 80%/<5%/>5% per direction), then a further 25,000-combo targeted
+sweep on the two closest (`rolling252_15`, `rolling126_10`). Best achieved:
+coverage 80-85%, FPR 6.3-6.7% (still short of <5%, but far closer than the
+original 20%-only ground truth ever got), defensive return solidly positive
+(5-24%). Full results: `results/multi_def_summary.json` +
+`results/multi_def_<name>_top10.json`.
+
+**Step 3 — actual portfolio backtest, the real arbiter** (`portfolio_strategy.py`
+wires the winning classifier per definition into a genuine 100%-aggressive-
+or-100%-defensive `Strategy`, no partial allocation; `run_portfolio_comparison.py`
+runs all 7 through the real 20-year backtest engine, 25% tax modeled, same
+methodology as every other backtest in this repo):
+
+| Strategy | CAGR | MaxDD | Sharpe | Total Return |
+|---|---|---|---|---|
+| Binary[alltime_05] | 20.7% | 41.3% | 4.32 | 5051% |
+| Binary[alltime_10] | 19.2% | 41.3% | 3.91 | 3835% |
+| Binary[alltime_15] | 21.3% | 47.6% | 4.22 | 5593% |
+| Binary[alltime_20] | 17.8% | 47.6% | 3.63 | 3000% |
+| **Binary[rolling126_10]** | **23.7%** | 47.2% | **4.43** | 8479% |
+| Binary[rolling252_10] | 23.1% | 46.9% | 4.40 | 7653% |
+| Binary[rolling252_15] | 22.7% | 47.2% | 4.26 | 7093% |
+| **RegimeAdaptive (MacroMom, live, unmodified)** | **25.1%** | 66.1% | 4.51 | 10734% |
+| SPY (no tax) | 10.7% | 50.7% | — | 731% |
+
+**Honest result: by the user's own stated criterion ("the one that
+maximizes growth is the winner"), the live, unmodified MacroMom strategy
+wins.** Every one of the 7 binary classifier strategies has dramatically
+better drawdown control (41-48% MaxDD vs. MacroMom's 66%) but LOWER raw
+CAGR - none of the extensive signal engineering across 200,000+ combined
+swept parameter combinations (this session, across the original 20%-ground-
+truth work and this multi-definition work) produced a binary defensive
+strategy that out-compounds the existing aggressive strategy over this
+specific 20-year window.
+
+**Why, mechanically**: a 100%-aggressive/100%-defensive strategy captures
+*zero* upside on every day it's classified defensive - including every
+false positive (6-15% of non-bear days, depending on definition) and every
+correctly-called bear day the market happened to rally within (bear-market
+rallies are real and frequent). MacroMom's graduated allocation (rarely
+below 85% aggressive even when "cautious") keeps compounding through
+almost all of that, and this specific 20-year window was dominated by an
+extraordinary, concentrated tech/semis bull run (2023-2025 especially) -
+the opportunity cost of any full exit, even a well-timed one, is unusually
+high in a window this strong. A lower-volatility strategy will generally
+show lower CAGR than a higher-volatility one that never quite got
+punished badly enough for its drawdowns to outweigh its foregone upside -
+that's what happened here, consistently, across every ground-truth
+definition tried.
+
+**Not a wasted result - a real, load-bearing finding**: binary (no-mix)
+allocation and "maximize growth" are in genuine tension when the
+underlying aggressive strategy is this strong. `Binary[rolling126_10]` is
+the best of the 7 (23.7% CAGR, only 1.4pp behind MacroMom, comparable
+Sharpe at 4.43 vs 4.51) while cutting max drawdown by 19 points (47.2% vs
+66.1%) - a legitimate, different answer if risk reduction is valued
+alongside growth, just not the winner under the literal maximize-growth
+rule as stated.
+
+Full artifacts: `results/portfolio_comparison_20yr.json` +
+per-strategy CSVs, `portfolio_strategy.py`, `run_portfolio_comparison.py`.
+
+---
+
 ## Iteration 1 (baseline: drawdown + VIX-level + VIX-spike fast_panic OR'd)
 
 | Metric | Result | Target | Pass? |

@@ -24,7 +24,7 @@ from classifier import classify, ClassifierParams
 
 def build_bear_mask(index: pd.DatetimeIndex, gt: dict, key: str = 'bears') -> pd.Series:
     mask = pd.Series(False, index=index)
-    for period in gt[key]:
+    for period in gt.get(key, []):
         start = pd.Timestamp(period['peak_date'])
         end = pd.Timestamp(period['trough_date'])
         mask.loc[(index >= start) & (index <= end)] = True

@@ -1,0 +1,14 @@
+{
+  "Binary[rolling252_15]": {
+    "cagr": 0.45812261704064317,
+    "max_drawdown": 0.20320512963437357,
+    "sharpe_ratio": 7.6181447289005915,
+    "total_return": 2.003256990644443
+  },
+  "RegimeAdaptive (MacroMom, live)": {
+    "cagr": 0.5763556901505902,
+    "max_drawdown": 0.18524145964459332,
+    "sharpe_ratio": 9.155858615624279,
+    "total_return": 2.7698351780443815
+  }
+}

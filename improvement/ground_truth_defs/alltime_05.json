@@ -1,0 +1,253 @@
+{
+  "style": "alltime",
+  "threshold": 0.05,
+  "window": null,
+  "window_range": [
+    "2005-01-01",
+    "2025-12-31"
+  ],
+  "bears": [
+    {
+      "kind": "alltime_05",
+      "peak_date": "2005-03-07",
+      "peak_price": 82.85478210449219,
+      "trough_date": "2005-04-20",
+      "trough_price": 77.09024047851562,
+      "recovery_date": "2005-07-11",
+      "depth_pct": 6.957403639908942,
+      "decline_days": 44
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2005-08-03",
+      "peak_price": 84.8286361694336,
+      "trough_date": "2005-10-13",
+      "trough_price": 80.21031188964844,
+      "recovery_date": "2005-11-17",
+      "depth_pct": 5.44429863349528,
+      "decline_days": 71
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2006-05-09",
+      "peak_price": 91.42813873291016,
+      "trough_date": "2006-06-13",
+      "trough_price": 84.48590087890625,
+      "recovery_date": "2006-09-13",
+      "depth_pct": 7.593108588029258,
+      "decline_days": 35
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2007-02-20",
+      "peak_price": 102.13554382324219,
+      "trough_date": "2007-03-05",
+      "trough_price": 96.05801391601562,
+      "recovery_date": "2007-04-16",
+      "depth_pct": 5.950455326056184,
+      "decline_days": 13
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2007-07-19",
+      "peak_price": 109.3503189086914,
+      "trough_date": "2007-08-15",
+      "trough_price": 99.45677185058594,
+      "recovery_date": "2007-10-05",
+      "depth_pct": 9.04757037459276,
+      "decline_days": 27
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2007-10-09",
+      "peak_price": 110.86796569824219,
+      "trough_date": "2009-03-09",
+      "trough_price": 49.68056106567383,
+      "recovery_date": "2012-08-16",
+      "depth_pct": 55.18943569245853,
+      "decline_days": 517
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2012-09-14",
+      "peak_price": 115.48999786376953,
+      "trough_date": "2012-11-15",
+      "trough_price": 107.0066146850586,
+      "recovery_date": "2013-01-02",
+      "depth_pct": 7.345556615835965,
+      "decline_days": 62
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2013-05-21",
+      "peak_price": 133.34776306152344,
+      "trough_date": "2013-06-24",
+      "trough_price": 125.94618225097656,
+      "recovery_date": "2013-07-11",
+      "depth_pct": 5.550584907173857,
+      "decline_days": 34
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2013-12-31",
+      "peak_price": 149.63246154785156,
+      "trough_date": "2014-02-03",
+      "trough_price": 141.1094207763672,
+      "recovery_date": "2014-02-24",
+      "depth_pct": 5.695983801455246,
+      "decline_days": 34
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2014-09-18",
+      "peak_price": 165.0195770263672,
+      "trough_date": "2014-10-16",
+      "trough_price": 153.01693725585938,
+      "recovery_date": "2014-10-31",
+      "depth_pct": 7.273464146978152,
+      "decline_days": 28
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2015-07-20",
+      "peak_price": 177.24395751953125,
+      "trough_date": "2016-02-11",
+      "trough_price": 154.16162109375,
+      "recovery_date": "2016-04-18",
+      "depth_pct": 13.022918664653327,
+      "decline_days": 206
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2016-06-08",
+      "peak_price": 179.9636993408203,
+      "trough_date": "2016-06-27",
+      "trough_price": 170.02195739746094,
+      "recovery_date": "2016-07-08",
+      "depth_pct": 5.524304056748369,
+      "decline_days": 19
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2018-01-26",
+      "peak_price": 251.58973693847656,
+      "trough_date": "2018-02-08",
+      "trough_price": 226.17445373535156,
+      "recovery_date": "2018-08-06",
+      "depth_pct": 10.101875979678782,
+      "decline_days": 13
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2018-09-20",
+      "peak_price": 259.9292907714844,
+      "trough_date": "2018-12-24",
+      "trough_price": 209.63575744628906,
+      "recovery_date": "2019-04-12",
+      "depth_pct": 19.34892877055962,
+      "decline_days": 95
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2019-05-03",
+      "peak_price": 264.1918029785156,
+      "trough_date": "2019-06-03",
+      "trough_price": 246.70677185058594,
+      "recovery_date": "2019-06-20",
+      "depth_pct": 6.618309474708263,
+      "decline_days": 31
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2019-07-26",
+      "peak_price": 272.681884765625,
+      "trough_date": "2019-08-05",
+      "trough_price": 256.2583312988281,
+      "recovery_date": "2019-10-25",
+      "depth_pct": 6.022971962700498,
+      "decline_days": 10
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2020-02-19",
+      "peak_price": 308.40350341796875,
+      "trough_date": "2020-03-23",
+      "trough_price": 204.41824340820312,
+      "recovery_date": "2020-08-10",
+      "depth_pct": 33.71727586013767,
+      "decline_days": 33
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2020-09-02",
+      "peak_price": 329.4110412597656,
+      "trough_date": "2020-09-23",
+      "trough_price": 298.3131103515625,
+      "recovery_date": "2020-11-11",
+      "depth_pct": 9.440464044336645,
+      "decline_days": 21
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2021-09-02",
+      "peak_price": 423.5653076171875,
+      "trough_date": "2021-10-04",
+      "trough_price": 401.9035339355469,
+      "recovery_date": "2021-10-20",
+      "depth_pct": 5.114152007278707,
+      "decline_days": 32
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2022-01-03",
+      "peak_price": 449.4864501953125,
+      "trough_date": "2022-10-12",
+      "trough_price": 339.3785095214844,
+      "recovery_date": "2023-12-13",
+      "depth_pct": 24.496387071508746,
+      "decline_days": 282
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2024-03-27",
+      "peak_price": 509.4277648925781,
+      "trough_date": "2024-04-19",
+      "trough_price": 482.1534729003906,
+      "recovery_date": "2024-05-14",
+      "depth_pct": 5.353907633585455,
+      "decline_days": 23
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2024-07-16",
+      "peak_price": 551.7970581054688,
+      "trough_date": "2024-08-05",
+      "trough_price": 505.4150695800781,
+      "recovery_date": "2024-09-19",
+      "depth_pct": 8.405624467197741,
+      "decline_days": 20
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2025-02-19",
+      "peak_price": 602.61328125,
+      "trough_date": "2025-04-08",
+      "trough_price": 489.591796875,
+      "recovery_date": "2025-06-26",
+      "depth_pct": 18.755226260622678,
+      "decline_days": 48
+    },
+    {
+      "kind": "alltime_05",
+      "peak_date": "2025-10-29",
+      "peak_price": 681.7418823242188,
+      "trough_date": "2025-11-20",
+      "trough_price": 647.1683349609375,
+      "recovery_date": "2025-12-10",
+      "depth_pct": 5.071354461223928,
+      "decline_days": 22
+    }
+  ],
+  "n_episodes": 24,
+  "total_decline_days": 1720
+}

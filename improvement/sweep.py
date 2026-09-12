@@ -53,26 +53,30 @@ def random_params(rng: random.Random, ranges: dict = None) -> ClassifierParams:
     return ClassifierParams(**kwargs)
 
 
-def combined_loss(result: dict) -> float:
-    cov_deficit = max(0.0, 0.85 - result['coverage'])
-    fpr_excess = max(0.0, result['false_positive_rate'] - 0.05)
-    ret_deficit = max(0.0, 0.05 - result['defensive_cum_return'])
+def combined_loss(result: dict, coverage_target: float = 0.85, fpr_target: float = 0.05,
+                   defret_target: float = 0.05) -> float:
+    cov_deficit = max(0.0, coverage_target - result['coverage'])
+    fpr_excess = max(0.0, result['false_positive_rate'] - fpr_target)
+    ret_deficit = max(0.0, defret_target - result['defensive_cum_return'])
     return cov_deficit + fpr_excess + ret_deficit
 
 
-def all_targets_met(result: dict) -> bool:
-    return (result['coverage'] >= 0.85 and
-            result['false_positive_rate'] < 0.05 and
-            result['defensive_cum_return'] > 0.05)
+def all_targets_met(result: dict, coverage_target: float = 0.85, fpr_target: float = 0.05,
+                     defret_target: float = 0.05) -> bool:
+    return (result['coverage'] >= coverage_target and
+            result['false_positive_rate'] < fpr_target and
+            result['defensive_cum_return'] > defret_target)
 
 
 def run_sweep(n: int, seed: int = 0):
     return run_sweep_with_ranges(n, seed, PARAM_RANGES)
 
 
-def run_sweep_with_ranges(n: int, seed: int, ranges: dict):
-    data = load_all()
-    gt = load_ground_truth()
+def run_sweep_with_ranges(n: int, seed: int, ranges: dict, data: dict = None, gt: dict = None,
+                           coverage_target: float = 0.85, fpr_target: float = 0.05,
+                           defret_target: float = 0.05, quiet: bool = False):
+    data = data if data is not None else load_all()
+    gt = gt if gt is not None else load_ground_truth()
     def_ret_cache = defensive_sleeve_returns(data['spy'].index)
 
     rng = random.Random(seed)
@@ -85,9 +89,9 @@ def run_sweep_with_ranges(n: int, seed: int, ranges: dict):
             result = score(defensive, gt, _def_ret_cache=def_ret_cache)
         except Exception as e:
             continue
-        loss = combined_loss(result)
+        loss = combined_loss(result, coverage_target, fpr_target, defret_target)
         results.append((loss, params, result))
-        if (i + 1) % 500 == 0:
+        if not quiet and (i + 1) % 500 == 0:
             elapsed = time.time() - t0
             print(f'  {i+1}/{n} ({elapsed:.1f}s, {elapsed/(i+1)*1000:.1f}ms/combo)')
 
@@ -95,13 +99,14 @@ def run_sweep_with_ranges(n: int, seed: int, ranges: dict):
     return results
 
 
-def print_top(results, k=15):
+def print_top(results, k=15, coverage_target: float = 0.85, fpr_target: float = 0.05,
+              defret_target: float = 0.05):
     print(f"\n{'='*100}\nTOP {k} CANDIDATES (loss=0 means all 3 targets met)\n{'='*100}")
     for rank, (loss, params, result) in enumerate(results[:k], 1):
         cov = result['coverage'] * 100
         fpr = result['false_positive_rate'] * 100
         dret = result['defensive_cum_return'] * 100
-        passed = all_targets_met(result)
+        passed = all_targets_met(result, coverage_target, fpr_target, defret_target)
         marker = ' <<< ALL TARGETS MET' if passed else ''
         print(f"#{rank:2d} loss={loss:.4f}  cov={cov:5.1f}%  fpr={fpr:5.1f}%  defret={dret:6.1f}%{marker}")
         print(f"     {params}")

@@ -1,0 +1,50 @@
+{
+  "Binary[alltime_05]": {
+    "cagr": 0.20740509679851105,
+    "max_drawdown": 0.4128938319878412,
+    "sharpe_ratio": 4.32404088471959,
+    "total_return": 50.512180607788935
+  },
+  "Binary[alltime_10]": {
+    "cagr": 0.1919522537923033,
+    "max_drawdown": 0.4128996488601296,
+    "sharpe_ratio": 3.9114692708064704,
+    "total_return": 38.346988574042264
+  },
+  "Binary[alltime_15]": {
+    "cagr": 0.21318750337054104,
+    "max_drawdown": 0.4759215270576155,
+    "sharpe_ratio": 4.222651761762441,
+    "total_return": 55.925361728803836
+  },
+  "Binary[alltime_20]": {
+    "cagr": 0.17844754454182543,
+    "max_drawdown": 0.4759030496351512,
+    "sharpe_ratio": 3.631024813990619,
+    "total_return": 30.0037496310153
+  },
+  "Binary[rolling126_10]": {
+    "cagr": 0.2372167369239906,
+    "max_drawdown": 0.4720776631551056,
+    "sharpe_ratio": 4.431249224069113,
+    "total_return": 84.79303942756827
+  },
+  "Binary[rolling252_10]": {
+    "cagr": 0.23123987052699357,
+    "max_drawdown": 0.46909449528126673,
+    "sharpe_ratio": 4.404994597804951,
+    "total_return": 76.52942414297391
+  },
+  "Binary[rolling252_15]": {
+    "cagr": 0.22683746363871204,
+    "max_drawdown": 0.47207805101016986,
+    "sharpe_ratio": 4.261339854310298,
+    "total_return": 70.93350009194349
+  },
+  "RegimeAdaptive (MacroMom, live)": {
+    "cagr": 0.2510973980021616,
+    "max_drawdown": 0.6608736785572024,
+    "sharpe_ratio": 4.505545817812612,
+    "total_return": 107.34017185994412
+  }
+}
