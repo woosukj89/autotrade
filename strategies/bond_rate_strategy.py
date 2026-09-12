@@ -251,6 +251,104 @@ class BondRateAdaptiveStrategy(RegimeAdaptiveStrategy):
         return Portfolio(cash=remaining_cash, positions=all_positions)
 
 
+class RegimeAdaptiveImprovedExecution(RegimeAdaptiveStrategy):
+    """
+    Control variant for isolating signal quality from execution quality.
+
+    Every comparison so far ran BondRateAdaptiveStrategy (new signal + new
+    execution: steeper allocation table, SH-weighted ETF baskets) against
+    plain RegimeAdaptiveStrategy (old MacroMom signal + old execution: the
+    original table that never commits past 70% defensive, BearBetaStrategy
+    stocks instead of ETFs). That's confounded — some of Bond Rate's edge
+    could just be the execution change, which would help ANY signal, not
+    something specific to the new score.
+
+    This strategy uses the ORIGINAL MacroMom signal (`_update_regime` fully
+    inherited, unchanged — including its persistence/momentum gate) but
+    swaps in the exact same execution BondRateAdaptiveStrategy uses: the
+    same steep allocation table, and the same SH-weighted "Full Defense"
+    basket for the defensive sleeve (MacroMom has no bear-type
+    classification, so there's no inflation/recession split to route on —
+    every defensive period uses the all-weather basket).
+    """
+
+    def _get_allocation_weights(self, bear_score: float) -> Tuple[float, float]:
+        for max_score, hb_weight, def_weight in BondRateAdaptiveStrategy.ALLOCATION_THRESHOLDS_BOND_RATE:
+            if bear_score <= max_score:
+                return (hb_weight, def_weight)
+        return (0.00, 1.00)
+
+    def _build_etf_basket_portfolio(self, capital: float, context: ExecutionContext) -> Portfolio:
+        basket = DEFENSIVE_BASKETS["mixed"]  # no bear-type signal available from MacroMom
+        positions: Dict[str, Position] = {}
+        remaining_cash = capital
+        for ticker, weight in basket.items():
+            price = context.get_price(ticker)
+            if not price or price <= 0:
+                continue
+            target_value = capital * weight
+            shares = int(target_value // price)
+            if shares > 0:
+                positions[ticker] = Position(ticker=ticker, shares=float(shares), avg_cost=price)
+                remaining_cash -= shares * price
+        return Portfolio(cash=max(0.0, remaining_cash), positions=positions)
+
+    def execute(self, context: ExecutionContext) -> Portfolio:
+        """Identical structure to RegimeAdaptiveStrategy.execute(), except
+        the defensive slice buys the SH-weighted ETF basket instead of
+        running BearBetaStrategy. _update_regime (the signal) is untouched."""
+        if self._should_check_regime(context.date):
+            self._update_regime(context)
+
+        portfolio = context.portfolio
+        total_value = portfolio.cash
+        for ticker, pos in portfolio.positions.items():
+            price = context.get_price(ticker)
+            total_value += pos.shares * (price if price else pos.avg_cost)
+
+        hb_weight, bb_weight = self._current_allocation
+        hb_capital = total_value * hb_weight
+        bb_capital = total_value * bb_weight
+
+        print(f"[RegimeImprovedExec] Total: ${total_value:,.0f}")
+        print(f"  High Beta: ${hb_capital:,.0f} ({hb_weight*100:.0f}%)")
+        print(f"  Defensive: ${bb_capital:,.0f} ({bb_weight*100:.0f}%)")
+
+        all_positions: Dict[str, Position] = {}
+        remaining_cash = total_value
+
+        if hb_weight > 0.05:
+            hb_portfolio = Portfolio(cash=hb_capital, positions={})
+            hb_context = ExecutionContext(
+                date=context.date,
+                portfolio=hb_portfolio,
+                get_price_fn=context._get_price,
+                get_historical_fn=context._get_historical,
+                get_fundamentals_fn=context._get_fundamentals,
+            )
+            hb_result = self.high_beta_strategy.execute(hb_context)
+            for ticker, pos in hb_result.positions.items():
+                all_positions[ticker] = pos
+            remaining_cash -= (hb_capital - hb_result.cash)
+
+        if bb_weight > 0.05:
+            bb_result = self._build_etf_basket_portfolio(bb_capital, context)
+            for ticker, pos in bb_result.positions.items():
+                if ticker in all_positions:
+                    existing = all_positions[ticker]
+                    total_shares = existing.shares + pos.shares
+                    avg_cost = (existing.shares * existing.avg_cost + pos.shares * pos.avg_cost) / total_shares
+                    all_positions[ticker] = Position(ticker=ticker, shares=total_shares, avg_cost=avg_cost)
+                else:
+                    all_positions[ticker] = pos
+            remaining_cash -= (bb_capital - bb_result.cash)
+
+        remaining_cash = max(0, remaining_cash)
+        print(f"[RegimeImprovedExec] Combined portfolio: {len(all_positions)} positions")
+
+        return Portfolio(cash=remaining_cash, positions=all_positions)
+
+
 if __name__ == "__main__":
     print("BondRateAdaptiveStrategy rebuilt — run via backtest/run_bond_rate_backtest.py "
           "for a real comparison against RegimeAdaptiveStrategy.")
