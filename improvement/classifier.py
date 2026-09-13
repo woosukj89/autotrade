@@ -103,6 +103,35 @@ def compute_raw_signals(data: Dict[str, pd.Series], p: ClassifierParams) -> pd.D
     return df
 
 
+def compute_votes(data: Dict[str, pd.Series], p: ClassifierParams = None,
+                   smooth_days: int = 10) -> Tuple[pd.Series, pd.Series]:
+    """For graduated (non-binary) allocation: returns (votes 0-4 float
+    Series, extreme_panic bool Series) instead of running the binary state
+    machine. Reuses the exact same signal computation as classify() so the
+    two stay consistent - this is just a different consumer of the same
+    votes.
+
+    smooth_days: rolling-mean window on the raw daily vote count.
+    TUNING NOTE (found via graduated_strategy.py comparison, see
+    PROGRESS.md): the binary classifier's state machine has persistence
+    gates and hysteresis (min_defensive_days, run-length confirmation)
+    layered on top of these same votes; a naive graduated exposure curve
+    using RAW unsmoothed daily votes turned out to react to far more
+    transient single-day noise than the binary version ever fully exited
+    on - it had both lower CAGR AND lower MaxDD than the binary version of
+    the same signal, i.e. it was cutting exposure more often for less
+    payoff. Smoothing the vote count is the fix, not abandoning the
+    graduated approach.
+    """
+    p = p or ClassifierParams()
+    sig = compute_raw_signals(data, p)
+    votes = (sig['fast_panic'].astype(int) + sig['trend_break'].astype(int)
+             + sig['credit_stress'].astype(int) + sig['breadth_stress'].astype(int))
+    if smooth_days and smooth_days > 1:
+        votes = votes.rolling(smooth_days, min_periods=1).mean()
+    return votes, sig['extreme_panic']
+
+
 def classify(data: Dict[str, pd.Series], p: ClassifierParams = None) -> Tuple[pd.Series, List[dict]]:
     """Returns (defensive: bool Series, transitions: list of {date, to, reason}).
 

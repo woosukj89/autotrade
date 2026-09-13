@@ -1,5 +1,94 @@
 # Progress Log
 
+## Iteration 14-16 (new target: CAGR>25.1% & MaxDD<30%): diversification, graduated allocation
+
+Per direction after Step 3 concluded MacroMom wins by raw CAGR ("not good
+enough... CAGR is too low"): new explicit numeric target, CAGR>25.1% AND
+MaxDD<30% simultaneously, brainstorming mandate for approaches beyond more
+bear-signal tuning. Options (puts/collars/hedges) explicitly approved as a
+tool, alongside plain long-only stocks/ETFs. Priority ideas from user:
+A (graduated allocation + better signals), B (tail hedge), D (redesign
+stock-picker), E (factor rotation).
+
+**Idea D probe — diversification alone** (`test_diversification.py`,
+`HighBetaGrowthStrategy` alone, no timing, 3 concentration settings, 20yr):
+
+| Variant | CAGR | MaxDD | Sharpe |
+|---|---|---|---|
+| default (15pos/50%sector/15%pos) | 26.8% | 64.7% | 4.72 |
+| diversified (25pos/30%sector/8%pos) | 24.6% | 63.6% | 4.72 |
+| very_diversified (35pos/20%sector/5%pos) | 23.0% | 58.9% | 4.67 |
+
+Critical finding: the stock-picker ALONE (no market timing at all) beats
+MacroMom on both CAGR and MaxDD. 20 years of MacroMom's timing overlay
+added ~zero value on this window. Diversification alone trades CAGR for
+MaxDD at a poor ratio (~9 points of CAGR given up per ~6 points of MaxDD
+cut, worst case) and can't reach <30% MaxDD by itself even at 35 positions.
+
+**Idea A — graduated (non-binary) allocation** (`graduated_strategy.py`
+`GraduatedClassifierStrategy`, `compute_votes()` in `classifier.py`): scales
+exposure by vote count (0-4 signals agreeing) instead of binary 100%/0%,
+directly targeting Step 3's diagnosed flaw (binary gives up ALL upside on
+every defensive day, including false positives and bear-rally chop).
+
+First pass used the RAW daily vote count with `DEFAULT_EXPOSURE_MAP =
+{0:1.00, 1:0.80, 2:0.55, 3:0.30, 4:0.15}`. Result was worse than expected -
+lower CAGR AND lower MaxDD than the binary version of the *same* signal
+(e.g. `rolling126_10`: graduated 21.7%/43.5% vs binary 23.7%/47.2%).
+Diagnosis: the binary classifier's state machine has persistence gates and
+hysteresis (`min_defensive_days`, run-length confirmation) layered on top
+of these same votes; feeding raw unsmoothed daily votes into exposure
+directly reacts to far more transient single-day noise than the binary
+version ever fully exited on - more frequent partial de-risking for less
+payoff, not genuinely less risk.
+
+**Fix: smooth the vote signal** (`compute_votes(..., smooth_days=10)`,
+10-day rolling mean on the vote count before mapping to exposure). Rerun,
+same 20yr backtest, same methodology:
+
+| Strategy | CAGR | MaxDD | Sharpe | Return |
+|---|---|---|---|---|
+| HighBetaOnly (no timing) | 27.0% | 64.0% | 4.72 | 14762% |
+| RegimeAdaptive (MacroMom, live) | 22.1% | 66.0% | 4.16 | 6368% |
+| Graduated[alltime_05] | 23.4% | 42.1% | 4.87 | 8082% |
+| **Graduated[alltime_10]** | **24.4%** | **43.6%** | **5.02** | 9583% |
+| Graduated[alltime_15] | 24.0% | 42.1% | 4.90 | 8955% |
+| Graduated[alltime_20] | 22.7% | 50.3% | 4.66 | 7134% |
+| Graduated[rolling126_10] | 23.0% | 56.8% | 4.53 | 7534% |
+| Graduated[rolling252_10] | 22.6% | 44.4% | 4.63 | 6975% |
+| Graduated[rolling252_15] | 23.7% | 63.8% | 4.50 | 8421% |
+| SPY (no tax) | 10.7% | 50.7% | — | 731% |
+
+(RegimeAdaptive/HighBetaOnly figures shift slightly run-to-run - confirmed
+non-determinism from yfinance fetch timing affecting stock selection, not
+a real difference in the strategies themselves.)
+
+Smoothing worked as diagnosed: every `alltime_*` definition's CAGR jumped
+2-3pp and Sharpe improved (Graduated[alltime_10] now has the best Sharpe of
+any strategy tested, 5.02). But it's a genuine trade-off, not a free
+lunch: 2 of 7 definitions (`rolling126_10`, `rolling252_15`) got *worse*
+MaxDD after smoothing (43.5%→56.8%, 44.8%→63.8%) - delaying the exposure
+cut to filter noise also delays reaction to a real fast selloff on those
+definitions' more frequent, shorter rolling-peak episodes.
+
+**Still short of target, and a consistent pattern is now visible**: across
+every equity-only approach tried this session - binary classifier,
+diversification alone, graduated/smoothed classifier - MaxDD keeps landing
+in the low-40s to mid-60s%, never below ~42%. That's not a tuning gap
+anymore, it looks like a structural floor for "long-only stocks +
+market-timing" against this stock-picker's inherent volatility (individual
+holdings run beta 1.2-2.2). No amount of exposure-curve or classifier
+tuning has broken meaningfully below it. This is the case for idea B (tail
+hedge via options) next - real convexity (not just reduced equity
+exposure) is what a strict 30% MaxDD ceiling while retaining most upside
+actually requires.
+
+Artifacts: `classifier.py::compute_votes`, `graduated_strategy.py`,
+`run_graduated_comparison.py`, `test_diversification.py`,
+`results/graduated_comparison_20yr.json` + per-strategy CSVs.
+
+---
+
 ## Iteration 11-13 (reframe, SPEC.md §0): multi-definition ground truth → real portfolio growth
 
 Per explicit direction after the classifier-metric ceiling: stopped treating
