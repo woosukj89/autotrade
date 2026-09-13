@@ -1,5 +1,72 @@
 # Progress Log
 
+## Iteration 17 (idea B: options tail hedge)
+
+`tail_hedge.py`: layers a rolling ~1-month SPY-based protective put / collar
+on top of the already-backtested monthly NAV curves (no real historical
+per-stock options data available, so SPY is used as the hedge underlying;
+hedge notional is scaled by the portfolio's empirically estimated beta to
+SPY - ~1.36 for HighBetaOnly, ~1.00-1.03 for the Graduated variants - to
+partially correct for basis risk). Black-Scholes pricing, sigma=VIX/100 as
+the 30-day IV proxy, flat r=3%. 25% tax on positive option P&L.
+
+**First pass (flat IV, no skew) looked like a genuine win**: on the
+HighBetaOnly base, a collar (long put + short call) financed largely by
+the call leg, run at 3x the beta-implied hedge notional, put strike 10%
+OTM / call strike 5% OTM, hit **28.3% CAGR / 28.4% MaxDD / 1.53 Sharpe** -
+the first and only result this entire session to clear BOTH the CAGR>25.1%
+and MaxDD<30% bars simultaneously.
+
+**Caught before reporting it as real**: the base pricing used flat
+sigma=VIX/100 for both the put and call legs. Real equity index options
+trade with a volatility skew - OTM puts price richer than ATM, OTM calls
+price cheaper (the "smirk") - which the flat-IV model ignores, making the
+modeled put artificially cheap and the modeled call artificially rich
+(overstating how much premium the short call actually finances). Added
+`skew_per_pct_otm` to `simulate_overlay()` and reran as a stress test.
+
+An unrealistically large skew value (0.015-0.03, i.e. 15-30 vol points of
+skew on a 10% OTM strike) blew the whole simulation up (MaxDD into the
+hundreds/thousands of percent, some runs NaN CAGR from negative NAV) -
+initially alarming, but diagnosed as a bad stress-test parameter, not a
+real flaw: that magnitude of skew is not physically realistic for SPX-
+style options. Recalibrated to a defensible ballpark (~0.3-0.6 vol points
+per 1% OTM, in line with typical SPX 25-delta risk-reversal levels) and
+reran:
+
+| Base | Skew stress | Best variant | CAGR | MaxDD | Sharpe |
+|---|---|---|---|---|---|
+| HighBetaOnly | none (flat IV) | Collar put10/call5 x3.0 | 28.3% | 28.4% | 1.53 |
+| HighBetaOnly | 0.003 (realistic) | Collar put10/call5 x3.0 | 27.3% | 40.4% | 1.28 |
+| HighBetaOnly | 0.006 (elevated) | Collar put10/call5 x1.5 | 26.6% | 49.7% | 1.07 |
+| Graduated[alltime_10] | 0.003 | Collar put10/call5 x3.0 | 24.7% | 42.5% | 1.24 |
+| Graduated[alltime_15] | 0.003 | Collar put10/call5 x3.0 | 24.3% | 40.1% | 1.22 |
+
+**Honest conclusion: the "meets target" result does not survive realistic
+options pricing and should be discarded as a headline claim.** Under a
+defensible skew assumption, the best finding is Collar[put10%/call5%,
+3x hedge ratio] on the HighBetaOnly base: **27.3% CAGR / 40.4% MaxDD /
+1.28 Sharpe** - this is nonetheless a real, load-bearing result: it is the
+best CAGR found by ANY approach this entire session (beats the 27.0%
+unhedged HighBetaOnly baseline slightly) while cutting MaxDD by 24 points
+(64.0%→40.4%) at the same time - genuinely Pareto-better than doing
+nothing, just not enough to clear the strict <30% bar. Idea A+B combined
+(collar on top of an already-graduated/de-risked base) does NOT beat idea
+B alone on the strongest base - Graduated[alltime_10]+collar tops out at
+24.7%/42.5%, worse on both axes than HighBetaOnly+collar.
+
+**Caveats not yet modeled** (flagged for the record, not swept under the
+rug): no bid-ask spread / transaction cost, no margin/capital feasibility
+check for a 3x-beta-notional options book (a real position of this size
+relative to account equity may face real-world liquidity and margin
+constraints not captured here), flat r=3% across a 20yr window that
+actually ranged from ~0% to ~5%, and the skew stress test is a reasonable
+ballpark, not a calibration against real historical SPX skew data.
+
+Artifacts: `tail_hedge.py`.
+
+---
+
 ## Iteration 14-16 (new target: CAGR>25.1% & MaxDD<30%): diversification, graduated allocation
 
 Per direction after Step 3 concluded MacroMom wins by raw CAGR ("not good
