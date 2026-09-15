@@ -1,5 +1,65 @@
 # Progress Log
 
+## Iteration 18 (idea E: factor rotation) - best result of the session
+
+Per direction after the honest (skew-adjusted) idea B result fell short:
+try factor rotation - always 100% invested in equities, but switch WHICH
+stocks are held based on regime, instead of switching how much is invested
+(idea A) or buying insurance (idea B).
+
+**`quality_strategy.py` - `QualityDefensiveStrategy(HighBetaGrowthStrategy)`**:
+reuses the exact same data pipeline (YahooDataProvider, beta calc, position
+sizing) as the aggressive sleeve, but inverts the screen - low beta
+(<=0.85, more points for <=0.65/<=0.45) instead of high, profitability/
+balance-sheet/FCF quality still required (so this isn't just "buy whatever
+has the lowest beta"), dividend-payer bonus, defensive sector scores
+(staples/healthcare/utilities/gold miners) instead of tech/discretionary.
+Standalone (always-on, no rotation) baseline: **17.2% CAGR / 32.8% MaxDD /
+5.24 Sharpe** - confirms the quality/low-beta tilt genuinely has much less
+drawdown even fully invested (32.8% vs. HighBetaOnly's 64.8%), not just a
+noisy artifact - real information, just lower absolute compounding alone.
+
+**`factor_rotation_strategy.py` - `FactorRotationStrategy`**: switches
+between the aggressive (HighBetaGrowthStrategy) and defensive
+(QualityDefensiveStrategy) sleeves using the exact same calibrated
+`classify()` regime signal used for the binary approach - reused as-is,
+not re-tuned, for the first pass. Full 20yr backtest, all 7 definitions:
+
+| Strategy | CAGR | MaxDD | Sharpe | Return |
+|---|---|---|---|---|
+| HighBetaOnly (no timing) | 26.7% | 64.8% | 4.68 | 14073% |
+| QualityDefensiveOnly (no timing) | 17.2% | 32.8% | 5.24 | 2659% |
+| RegimeAdaptive (MacroMom, live) | 24.6% | 66.7% | 4.50 | 9827% |
+| FactorRotation[alltime_05] | 27.0% | 32.3% | 5.49 | 14667% |
+| FactorRotation[alltime_10] | 26.6% | 38.4% | 5.21 | 13717% |
+| **FactorRotation[alltime_15]** | **28.2%** | **33.5%** | **5.44** | 17993% |
+| FactorRotation[alltime_20] | 25.9% | 36.5% | 5.02 | 12266% |
+| FactorRotation[rolling126_10] | 26.3% | 52.9% | 4.84 | 13040% |
+| FactorRotation[rolling252_10] | 27.4% | 46.5% | 5.12 | 15795% |
+| FactorRotation[rolling252_15] | 25.6% | 52.9% | 4.72 | 11705% |
+| SPY (no tax) | 10.7% | 50.7% | — | 731% |
+
+**Best result of the entire session, by a wide margin, with no synthetic
+pricing assumptions required** (unlike idea B, which needed a Black-
+Scholes/skew model to even evaluate): `FactorRotation[alltime_15]` hits
+28.2% CAGR (clears the 25.1% target by 3.1pp, the highest CAGR found by
+ANY approach all session) and 33.5% MaxDD (only 3.5pp above the <30%
+target, vs. the collar's honest 40.4% or the graduated approach's 43.6%).
+Sharpe (5.44) is also the best or near-best of anything tried.
+`alltime_05` is comparably close (27.0%/32.3%). Both `rolling*` definitions
+did notably worse on MaxDD (46.5-52.9%) - consistent with earlier findings
+that the `rolling*` definitions' more frequent, shorter episodes don't
+calibrate as cleanly as the `alltime_*` definitions.
+
+**Still short of target, but for the first time by a small, plausible-to-
+close margin rather than a structural one.**
+
+Artifacts: `quality_strategy.py`, `factor_rotation_strategy.py`,
+`run_factor_rotation_comparison.py`,
+`results/factor_rotation_comparison_20yr.json` + per-strategy CSVs.
+
+---
+
 ## Iteration 17 (idea B: options tail hedge)
 
 `tail_hedge.py`: layers a rolling ~1-month SPY-based protective put / collar

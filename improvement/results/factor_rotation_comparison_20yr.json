@@ -1,0 +1,62 @@
+{
+  "HighBetaOnly (no timing)": {
+    "cagr": 0.2672711288285641,
+    "max_drawdown": 0.6478012121713576,
+    "sharpe_ratio": 4.67524266780608,
+    "total_return": 140.72911058295153
+  },
+  "QualityDefensiveOnly": {
+    "cagr": 0.17188247488747144,
+    "max_drawdown": 0.32778304244020723,
+    "sharpe_ratio": 5.239149048069069,
+    "total_return": 26.58491689952868
+  },
+  "RegimeAdaptive (MacroMom, live)": {
+    "cagr": 0.24587492690870905,
+    "max_drawdown": 0.6673142931160312,
+    "sharpe_ratio": 4.498669155642764,
+    "total_return": 98.26468631571795
+  },
+  "FactorRotation[alltime_05]": {
+    "cagr": 0.26975943475221587,
+    "max_drawdown": 0.3234297895088083,
+    "sharpe_ratio": 5.491950095554258,
+    "total_return": 146.66454621039384
+  },
+  "FactorRotation[alltime_10]": {
+    "cagr": 0.2657309045060161,
+    "max_drawdown": 0.38425109521724904,
+    "sharpe_ratio": 5.207743461393808,
+    "total_return": 137.1697458741254
+  },
+  "FactorRotation[alltime_15]": {
+    "cagr": 0.2821541485497594,
+    "max_drawdown": 0.33469811423869494,
+    "sharpe_ratio": 5.435206107819532,
+    "total_return": 179.92973471218508
+  },
+  "FactorRotation[alltime_20]": {
+    "cagr": 0.259034927965208,
+    "max_drawdown": 0.3652663352921242,
+    "sharpe_ratio": 5.017288400927978,
+    "total_return": 122.6614488944829
+  },
+  "FactorRotation[rolling126_10]": {
+    "cagr": 0.2626923699252579,
+    "max_drawdown": 0.5291656131967776,
+    "sharpe_ratio": 4.842689110304488,
+    "total_return": 130.3959198624614
+  },
+  "FactorRotation[rolling252_10]": {
+    "cagr": 0.2742395995137772,
+    "max_drawdown": 0.4650257410365083,
+    "sharpe_ratio": 5.116412571863628,
+    "total_return": 157.95273010017456
+  },
+  "FactorRotation[rolling252_15]": {
+    "cagr": 0.2562441768310222,
+    "max_drawdown": 0.5291655033214091,
+    "sharpe_ratio": 4.719036257151499,
+    "total_return": 117.05346325557224
+  }
+}
