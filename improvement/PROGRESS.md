@@ -1,6 +1,74 @@
 # Progress Log
 
-## Iteration 19 (idea E tuning) - FIRST STRATEGY TO MEET THE TARGET
+## Iteration 20 (validation) - Iteration 19's "meets target" claim RETRACTED
+
+Per direction to validate the `vote_threshold=1` result before trusting it.
+Two problems found, both real:
+
+**1. The raw signal whipsaws daily, sampled on a fixed monthly grid.**
+`classify()` with `vote_threshold=1` produces 616 transitions over the
+20yr window with a MEDIAN EPISODE LENGTH OF 1 DAY (473 of 616 episodes
+last <=3 days) - vs. 90 transitions for the original `vote_threshold=2`
+base. Every backtest this session rebalances on a fixed monthly date (1st
+business day of the month, `backtest.py`'s `FREQ_MAP['M']='MS'`), so the
+strategy is sampling this chaotic daily-flipping signal at 240 fixed
+points, not reacting to it continuously. The aggregate time-spent-
+defensive is reasonably stable across different sampling-date offsets
+(26-31% tested at +0/4/9/14/19 days), but which SPECIFIC months get
+flagged almost certainly differs a lot between offsets given the 1-day
+median episode length - meaning the specific reported number was likely
+not reproducible.
+
+**2. Confirmed directly: even the identical config re-run gives a
+materially different result**, independent of point 1. Re-running the
+EXACT same `vote_threshold=1` params (`validate_vote1.py`) gave **28.8%
+CAGR / 33.6% MaxDD** - not the 26.2%/25.7% originally reported. This is
+the same run-to-run non-determinism documented earlier this session
+(yfinance fetch timing affects stock universe/selection each run), but
+this is the first time it's been shown to swing MaxDD by ~8 points on an
+identical config - large enough to flip a "meets target" claim into a
+miss. Any single-run "meets target" claim near the boundary should be
+treated with real skepticism from here on, not just this one.
+
+**Stabilized version tested and still falls short**: fixed the whipsaw
+directly (require the vote=1 trigger to persist `combo_confirm_days`=10,
+`panic_cooldown_days`=15, `min_defensive_days`=10 - cuts transitions to
+114, median episode length to 15 days, a genuinely stable signal, verified
+via `classify()` before spending a full backtest run on it):
+
+| Variant | CAGR | MaxDD | Sharpe | Trades |
+|---|---|---|---|---|
+| base (vote=2, reused alltime_15) | 28.3% | 34.5% | 5.42 | 1233 |
+| vote=1, RAW (re-run of Iteration 19's headline) | 28.8% | 33.6% | 5.70 | 1189 |
+| vote=1, combo_confirm=5 | 29.9% | 33.7% | 5.74 | 1194 |
+| vote=1, combo_confirm=10 | 25.8% | 34.2% | 5.11 | 1141 |
+| vote=1, stabilized (combo=10,cooldown=15,min_def=10) | 25.7% | 34.3% | 5.32 | 1236 |
+
+**None of these meet CAGR>25.1% AND MaxDD<30%.** MaxDD clusters
+consistently in the 33.5-34.5% band across every variant here regardless
+of exactly how the vote threshold/persistence is tuned - a much tighter,
+more consistent range than the single earlier outlier run suggested. This
+looks like the real, repeatable floor for factor rotation on this
+classifier family, not 25.7%.
+
+**Corrected session state**: Iteration 19's "first strategy to meet the
+target" claim is retracted - it did not survive validation. The honest
+best results remain: idea B's skew-adjusted options collar (27.3% CAGR /
+40.4% MaxDD, Iteration 17) for lowest validated MaxDD, and factor rotation
+variants (26-30% CAGR / ~33-38% MaxDD across many configs and reruns,
+Iterations 18-20) for best CAGR and Sharpe with no synthetic pricing
+assumptions - genuinely the best approach found this session on a
+risk-adjusted basis, just not confirmed to cross the strict <30% MaxDD
+line. ~1200 trades over 20yr for the factor-rotation variants (~5/month)
+is also a real, unmodeled cost this session's backtests don't price
+(zero slippage/bid-ask spread by default - see Iteration 17's caveats,
+same gap applies here).
+
+Artifacts: `validate_vote1.py`.
+
+---
+
+## Iteration 19 (idea E tuning) - retracted, see Iteration 20 above
 
 Insight: `multi_def_summary.json`'s classifiers were calibrated to minimize
 false-positive rate for the BINARY strategy, where a false positive costs
