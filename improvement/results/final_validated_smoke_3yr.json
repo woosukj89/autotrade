@@ -1,0 +1,26 @@
+{
+  "PitHighBetaOnly (no timing)": {
+    "cagr": 0.11451695860634059,
+    "max_drawdown": 0.47360746759996397,
+    "sharpe_ratio": 0.36237444116418527,
+    "slippage_cost": 423.22846365401296,
+    "regulatory_fees": 10.930421878968698,
+    "tax_paid": 138524.14888972268
+  },
+  "PitQualityDefensiveOnly": {
+    "cagr": 0.04951342612163656,
+    "max_drawdown": 0.14503601553955248,
+    "sharpe_ratio": 0.11610972863797114,
+    "slippage_cost": 241.06699772682103,
+    "regulatory_fees": 5.6122336486229045,
+    "tax_paid": 69156.56780378803
+  },
+  "PitFactorRotation[alltime_15]": {
+    "cagr": 0.034416150714271954,
+    "max_drawdown": 0.4307549885032774,
+    "sharpe_ratio": 0.09266220782511829,
+    "slippage_cost": 1820.7777570162066,
+    "regulatory_fees": 52.09740840818954,
+    "tax_paid": 199726.1938704081
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "PitHighBetaOnly (no timing)": {
+    "cagr": 0.1635997900362416,
+    "max_drawdown": 0.5813152065579349,
+    "sharpe_ratio": 0.5853202848634517,
+    "slippage_cost": 9418.22043382996,
+    "regulatory_fees": 301.956388013966,
+    "tax_paid": 8245464.504779043
+  },
+  "PitQualityDefensiveOnly": {
+    "cagr": 0.07950364336195492,
+    "max_drawdown": 0.23287247421051963,
+    "sharpe_ratio": 0.3405449280639192,
+    "slippage_cost": 2236.823127222816,
+    "regulatory_fees": 67.45363225078327,
+    "tax_paid": 1788734.6177119256
+  },
+  "PitFactorRotation[alltime_15]": {
+    "cagr": 0.13097138920564944,
+    "max_drawdown": 0.5502253728323312,
+    "sharpe_ratio": 0.5104534758700193,
+    "slippage_cost": 32714.51134238611,
+    "regulatory_fees": 1090.9845658808354,
+    "tax_paid": 6829163.297823576
+  },
+  "PitFactorRotation[alltime_05]": {
+    "cagr": 0.13859835469599946,
+    "max_drawdown": 0.4638725142345642,
+    "sharpe_ratio": 0.5590399754463383,
+    "slippage_cost": 29416.223961138036,
+    "regulatory_fees": 940.5837650762181,
+    "tax_paid": 7570442.427458139
+  },
+  "PitFactorRotation[alltime_10]": {
+    "cagr": 0.11827636194769964,
+    "max_drawdown": 0.5183712276467382,
+    "sharpe_ratio": 0.45686810679914186,
+    "slippage_cost": 28941.407816055547,
+    "regulatory_fees": 931.5899020364649,
+    "tax_paid": 5858581.448941075
+  }
+}

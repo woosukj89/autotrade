@@ -64,6 +64,8 @@ class BacktestResult:
         self.benchmark_ticker: str = "SPY"
         self.tax_paid: float = 0.0          # Total taxes deducted during simulation
         self.tax_rate: float = 0.0          # Rate used (informational)
+        self.slippage_cost: float = 0.0     # Total slippage cost deducted during simulation
+        self.regulatory_fees: float = 0.0   # Total SEC/FINRA fees deducted during simulation
 
     # ── scalar metrics ────────────────────────────────────────────────
 
@@ -646,6 +648,8 @@ class Backtest:
         self._current_date: Optional[datetime] = None
         self._annual_realized_gains: dict[int, float] = {}
         self._total_tax_paid: float = 0.0
+        self._total_slippage_cost: float = 0.0
+        self._total_regulatory_fees: float = 0.0
 
     # ── price helpers ─────────────────────────────────────────────────
 
@@ -723,13 +727,42 @@ class Backtest:
     # ── buffer pricing ────────────────────────────────────────────────
 
     @staticmethod
-    def _apply_buffer(price: float, side: str, buffer_pricing: int) -> float:
-        if buffer_pricing <= 0:
+    def _apply_buffer(price: float, side: str, buffer_pricing: int, slippage_bps: float = 0.0) -> float:
+        """Combines two independent execution-cost models:
+
+        buffer_pricing: legacy flat-dollar random offset in [0, buffer_pricing].
+        slippage_bps: a percentage-of-price cost (basis points), representing
+            bid-ask spread / market impact - unlike buffer_pricing this scales
+            sensibly across a $20 stock and a $900 stock instead of a fixed
+            dollar amount being a wildly different fraction of each. Applied
+            deterministically (half-spread paid on each side), not randomized -
+            standard practice for a baseline slippage assumption, since the
+            spread itself (not its day-to-day noise) is the material cost.
+        """
+        offset = random.uniform(0, buffer_pricing) if buffer_pricing > 0 else 0.0
+        if slippage_bps > 0:
+            offset += price * (slippage_bps / 10000.0)
+        if offset <= 0:
             return price
-        offset = random.uniform(0, buffer_pricing)
         if side == "buy":
             return price + offset
         return max(0.01, price - offset)
+
+    @staticmethod
+    def _regulatory_sell_fee(proceeds: float, shares: float) -> float:
+        """SEC Section 31 fee + FINRA Trading Activity Fee (TAF), both
+        charged only on SELLS, both pass-through regulatory fees (not
+        broker markup) - Robinhood (like any US broker) collects and
+        remits these; $0 commission does not mean $0 fees. Rates per
+        SEC/FINRA schedules as of 2024-2025:
+          SEC fee: $27.80 per $1,000,000 of proceeds (0.00278%)
+          FINRA TAF: $0.000166 per share sold, capped at $8.30/trade
+        Both are tiny in dollar terms for typical retail-size trades but
+        included for completeness rather than silently assumed zero.
+        """
+        sec_fee = proceeds * (27.80 / 1_000_000)
+        finra_taf = min(shares * 0.000166, 8.30)
+        return sec_fee + finra_taf
 
     # ── portfolio valuation ───────────────────────────────────────────
 
@@ -743,7 +776,8 @@ class Backtest:
     # ── trade execution ───────────────────────────────────────────────
 
     def _execute_trades(self, current: Portfolio, desired: Portfolio,
-                        buffer_pricing: int) -> list[TradeRecord]:
+                        buffer_pricing: int, slippage_bps: float = 0.0,
+                        regulatory_fees: bool = False) -> list[TradeRecord]:
         """Diff *current* vs *desired* and mutate *current* in place.
 
         Sells are processed first to free up cash for buys.  If after
@@ -766,8 +800,12 @@ class Backtest:
                 continue
 
             avg_cost = current.positions[ticker].avg_cost
-            exec_price = self._apply_buffer(market_price, "sell", buffer_pricing)
+            exec_price = self._apply_buffer(market_price, "sell", buffer_pricing, slippage_bps)
             proceeds = sell_shares * exec_price
+            if regulatory_fees:
+                fee = self._regulatory_sell_fee(proceeds, sell_shares)
+                proceeds -= fee
+                self._total_regulatory_fees += fee
             current.cash += proceeds
 
             # Track realized gain for year-end tax calculation
@@ -783,6 +821,7 @@ class Backtest:
             else:
                 current.positions[ticker].shares = des_shares
 
+            self._total_slippage_cost += abs(market_price - exec_price) * sell_shares
             trades.append(TradeRecord(
                 date=self._current_date,
                 ticker=ticker,
@@ -805,7 +844,7 @@ class Backtest:
             if market_price is None:
                 continue
 
-            exec_price = self._apply_buffer(market_price, "buy", buffer_pricing)
+            exec_price = self._apply_buffer(market_price, "buy", buffer_pricing, slippage_bps)
             cost = buy_shares * exec_price
 
             # Reduce order if cash is insufficient.
@@ -834,6 +873,7 @@ class Backtest:
                     avg_cost=exec_price,
                 )
 
+            self._total_slippage_cost += abs(exec_price - market_price) * buy_shares
             trades.append(TradeRecord(
                 date=self._current_date,
                 ticker=ticker,
@@ -854,6 +894,8 @@ class Backtest:
         end_year: int = None,
         starting_fund: float = 10000,
         buffer_pricing: int = 0,
+        slippage_bps: float = 0.0,
+        regulatory_fees: bool = False,
         strategy: Strategy = None,
         time_period: str = "d",
         benchmark: str = "SPY",
@@ -870,6 +912,22 @@ class Backtest:
                             trade.  ``0`` disables slippage.  When > 0 buy
                             prices are raised and sell prices lowered by a
                             uniform-random amount in ``[0, buffer_pricing]``.
+                            Legacy flat-dollar model; prefer slippage_bps
+                            for realistic cross-price-range behavior.
+            slippage_bps: Deterministic percentage-of-price execution cost
+                          (basis points) applied on both buys and sells,
+                          representing bid-ask spread / market impact -
+                          e.g. 5.0 = 0.05%. ``0`` disables. Scales
+                          sensibly across stocks at very different price
+                          levels, unlike buffer_pricing's fixed dollar
+                          amount.
+            regulatory_fees: When True, deducts the real SEC Section 31
+                             fee ($27.80/$1M proceeds) and FINRA TAF
+                             ($0.000166/share, capped $8.30/trade) from
+                             sell proceeds - both are pass-through
+                             regulatory fees any US broker (Robinhood
+                             included) collects regardless of its own
+                             $0 commission policy.
             strategy: A :class:`Strategy` instance whose ``execute`` method
                       will be called at every time step.
             time_period: Execution frequency — one of ``"m"`` (minute),
@@ -898,6 +956,8 @@ class Backtest:
         self._price_cache = dict(preloaded_price_cache) if preloaded_price_cache else {}
         self._annual_realized_gains = {}
         self._total_tax_paid = 0.0
+        self._total_slippage_cost = 0.0
+        self._total_regulatory_fees = 0.0
 
         freq = FREQ_MAP[time_period]
         dates = pd.date_range(start=self._start_date, end=self._end_date, freq=freq)
@@ -929,7 +989,7 @@ class Backtest:
 
             desired = strategy.execute(context)
 
-            trades = self._execute_trades(portfolio, desired, buffer_pricing)
+            trades = self._execute_trades(portfolio, desired, buffer_pricing, slippage_bps, regulatory_fees)
             result.trades.extend(trades)
 
             # Year-end tax deduction on net realized gains (December snapshot)
@@ -963,4 +1023,6 @@ class Backtest:
         result.final_portfolio = deepcopy(portfolio)
         result.tax_paid = self._total_tax_paid
         result.tax_rate = self.tax_rate
+        result.slippage_cost = self._total_slippage_cost
+        result.regulatory_fees = self._total_regulatory_fees
         return result

@@ -1,5 +1,136 @@
 # Progress Log
 
+## Iteration 22 (full redo: point-in-time data, daily cadence, real costs, no options) - MAJOR CORRECTION
+
+Per explicit direction to fix 4 things before trusting any further result:
+(1) find more reliable data and eliminate lookahead bias, (2) run at
+daily cadence to match the live cron, (3) model real transaction costs
+(Robinhood fees + slippage), (4) drop options entirely - plus build a
+Robinhood-outage resilience test. This iteration is the full redo.
+
+**(1) Point-in-time fundamentals via SEC EDGAR** (`edgar_pipeline.py`).
+Found the underlying issue was worse than "yfinance is flaky": every
+backtest this session (`HighBetaGrowthStrategy`/`QualityDefensiveStrategy`)
+fetched fundamentals via `self._yahoo_provider.get_fundamentals_batch()`
+directly, bypassing the point-in-time path (`_get_fundamentals`, already
+present in `backtest.py`, filters `date <= simulated_date`) entirely - so
+every historical backtest scored 2010-era stock picks using 2026
+hindsight ROE/margins/growth. `data/edgar.py` already had an unused SEC
+EDGAR ingestion pipeline built for exactly this; found and fixed THREE
+real bugs in it before trusting the data:
+  - `facts.tag` is already the resolved friendly concept name
+    ('Revenue'), not the raw XBRL tag list - the original
+    `isin(raw_tag_list)` match against it silently matched nothing.
+  - `extract_tag_series()` returned only the FIRST XBRL tag with any
+    data for the whole company and never merged across tags - since
+    companies change tags over time (e.g. many switched revenue tags at
+    the 2018 ASC 606 standard), this silently dropped most of a
+    company's history whenever it had changed tags even once. Fixed by
+    merging observations across all priority tags.
+  - SEC's `fy` field labels which FILING contains an observation, not
+    which period the value describes (a single 10-K includes prior-year
+    comparatives, all stamped with the filing's own `fy`) - grouping by
+    `fy` mixed annual/quarterly/restated values under one label
+    (verified directly: produced Apple revenue numbers off by exactly 2
+    fiscal years before the fix). Fixed by filtering to genuine ~365-day
+    annual spans and keying by the actual period `end` date, taking the
+    EARLIEST filing that disclosed each period (that's when it actually
+    became knowable - not the latest, which is what a naive "most
+    recent restatement" read would grab).
+  Verified post-fix against known real Apple Revenue/NetIncome/Equity/
+  TotalDebt figures for every year 2010-2025 - all correct. Ingested the
+  424-ticker research universe (400 resolved via SEC's ticker list, 24
+  not found - mostly delisted/acquired names like ATVI, BRK.B formatting),
+  83,733 point-in-time fact-rows across 393 tickers.
+  `PitFundamentalsStore`/`PitHighBetaGrowthStrategy`/
+  `PitQualityDefensiveStrategy` (`pit_strategies.py`) consume this via an
+  in-memory point-in-time lookup instead of the live yahoo shortcut -
+  beta still comes from real price history (already point-in-time
+  correct via `context.get_historical_prices`), only the fundamentals
+  half changed.
+
+**(2) Daily cadence** (`final_validated_comparison.py --time-period d`).
+Matches the live cron's actual daily check, instead of the monthly
+sampling every prior backtest this session used.
+
+**(3) Real transaction costs** (`backtest.py`: new `slippage_bps` and
+`regulatory_fees` params on `Backtest.backtest()`). Robinhood charges $0
+commission on stocks, but real SEC Section 31 fees ($27.80/$1M proceeds)
+and FINRA TAF ($0.000166/share, capped $8.30/trade) apply to every sell
+regardless of broker. The dominant real cost is bid-ask spread, which the
+existing flat-dollar `buffer_pricing` modeled poorly (a fixed dollar
+amount is a wildly different fraction of a $20 stock vs a $900 stock) -
+added a percentage-of-price `slippage_bps` model instead (5bps default,
+a moderate assumption for liquid S&P-ish names). Both now tracked and
+reported on `BacktestResult` (`slippage_cost`, `regulatory_fees`).
+
+**(4) Options removed entirely.** `PitFactorRotationStrategy` has no
+collar/hedge component - pure long-only equities, matching direction.
+
+**(5) Outage-resilience simulator built** (`outage_strategy.py`,
+`OutageSimulatingStrategy`) - wraps any strategy and goes "offline" for
+scheduled windows (portfolio just sits and marks to market, no new
+trades), modeling the observed Robinhood session-expiry issue. Not yet
+run against the full 20yr window - next step.
+
+**Full 20yr daily-cadence result, all 4 fixes combined**:
+
+| Strategy | CAGR | MaxDD | Sharpe | Slippage | RegFees | Tax paid |
+|---|---|---|---|---|---|---|
+| PitHighBetaOnly (no timing) | 16.4% | 58.1% | 0.59 | $9,418 | $302 | $8,245,465 |
+| PitQualityDefensiveOnly | 8.0% | 23.3% | 0.34 | $2,237 | $67 | $1,788,735 |
+| PitFactorRotation[alltime_15] | 13.1% | 55.0% | 0.51 | $32,715 | $1,091 | $6,829,163 |
+| PitFactorRotation[alltime_05] | 13.9% | 46.4% | 0.56 | $29,416 | $941 | $7,570,442 |
+| PitFactorRotation[alltime_10] | 11.8% | 51.8% | 0.46 | $28,941 | $932 | $5,858,581 |
+
+**This is a major correction to the entire session, not just a new data
+point.** Every earlier headline number (HighBetaOnly 26.7-27.0% CAGR,
+FactorRotation[alltime_15] 28.2% CAGR, the collar's 27.3%, etc.) was
+generated with the lookahead bias described above still active. The
+honest, point-in-time-correct number for the exact same unhedged
+stock-picker is **16.4% CAGR**, roughly 10 points lower - hindsight
+about which companies turned out to have great fundamentals was worth
+far more to the backtested return than any of the market-timing/hedging/
+rotation work this session actually tested. **Nothing from this session,
+under honest assumptions, comes close to the CAGR>25.1% target anymore,**
+let alone MaxDD<30%.
+
+The rotation-vs-timing conclusion also flips again, consistent with (not
+contradicting) two earlier findings this session (Step 3's original
+"binary timing gives up upside" result, and the smoke-test tax finding
+above): `PitFactorRotation` underperforms the plain `PitHighBetaOnly`
+sleeve on CAGR in every one of the 3 definitions tested (11.8-13.9% vs
+16.4%), with MaxDD only modestly better (46-55% vs 58%) - daily-cadence
+regime switching now reacts to every real transition (not smoothed by
+monthly sampling), incurring real slippage/regulatory/tax cost on a full
+portfolio turnover each time, and this cost isn't fully recovered by the
+defensive sleeve's lower volatility.
+
+**Why MaxDD dropped less than CAGR** (58% vs the earlier 64-65%, a much
+smaller change than CAGR's ~10-point drop): a plausible mechanism, not
+fully isolated - today's-hindsight fundamentals likely over-selected
+stocks that specifically turned out to be extreme winners (which are
+also disproportionately the most volatile names), so removing that
+hindsight reduces the return-inflation effect much more than it changes
+the underlying risk profile of "high-beta tech/semis screen" as a
+category.
+
+**Not yet done**: the outage-resilience test (`--mode outage`) against
+this corrected baseline - next step. Given the corrected numbers no
+longer meet target by a wide margin, that test's finding will speak to
+operational robustness, not to whether this specific approach is
+deployable as-is - it currently doesn't clear the return bar honestly
+measured, full stop.
+
+Artifacts: `edgar_pipeline.py`, `pit_strategies.py`,
+`pit_factor_rotation_strategy.py`, `outage_strategy.py`,
+`final_validated_comparison.py`, `backtest.py` (slippage_bps/
+regulatory_fees params), `edgar_universe.txt`,
+`data/edgar_fundamentals.sqlite`,
+`results/final_validated_{smoke_3yr,full_20yr}.json`.
+
+---
+
 ## Iteration 21 (idea E+B combined, + root-caused stability investigation)
 
 Per direction to "keep going and push further" after Iteration 20's
