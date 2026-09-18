@@ -1,5 +1,73 @@
 # Progress Log
 
+## Iteration 21 (idea E+B combined, + root-caused stability investigation)
+
+Per direction to "keep going and push further" after Iteration 20's
+retraction. Combined idea E (factor rotation) with idea B (options
+collar) - factor rotation's base MaxDD (~31-35%, see below) is a much
+better starting point for a hedge overlay than idea B alone had
+(HighBetaOnly's 64%), so it should need a far smaller, more realistic
+hedge to close the gap.
+
+**Root cause of the run-to-run noise found.** The repeated
+`[YahooData] Fetching fundamentals for N tickers... Got fundamentals for 0
+tickers` lines seen throughout this session's logs are yfinance's `.info`
+endpoint silently failing an entire fetch batch - a known reliability
+issue with that unofficial API under concurrent load
+(`data/yahoo_data.py::get_fundamentals`, 15 parallel workers). This
+changes which stocks clear `HighBetaGrowthStrategy`'s score>=50 filter
+between runs. Confirmed the mechanism precisely: results are perfectly
+deterministic WITHIN one script session (3 back-to-back reruns in
+`stability_check.py` gave bit-for-bit identical 28.0%/31.0%/5.41, because
+the sqlite fundamentals/beta caches stay populated for the whole session),
+but differ BETWEEN separate sessions, because whatever partial data
+yfinance happens to serve at the moment the cache is first populated gets
+locked in until the cache expires. Not patched (`data/yahoo_data.py` is
+shared with the live trader - out of scope for this research branch) but
+now understood and worked around methodologically: don't trust a single
+session's result this close to a boundary, sample across sessions
+instead.
+
+**FactorRotation[alltime_15] base (no hedge), 3 independent cache-state
+draws**: CAGR is rock-solid (28.0%, 28.1%, 28.2% - a 0.2pp range,
+comfortably above the 25.1% target every time). MaxDD is genuinely noisier
+(31.0%, 33.5%, 35.1% - a 4.1pp range), consistent with MaxDD depending
+more on which specific volatile stock was or wasn't in the 15-position
+book during a specific crash week, while CAGR depends more on broad
+tech/semis exposure that's robust to substitution among close-quality
+candidates.
+
+**Collar put15%/call8% (1x hedge ratio, skew=0.003 realistic) applied to
+all 3 independent draws**:
+
+| Base draw | Base MaxDD | Collared CAGR | Collared MaxDD | Meets target? |
+|---|---|---|---|---|
+| Original (Iter. 18) | 33.5% | 28.4% | 28.4% | YES |
+| Rerun | 35.1% | 28.2% | 30.1% | NO (by 0.1pp) |
+| Stability run 0-2 | 31.0% | 28.2% | 27.3% | YES |
+
+**Honest verdict: this is the best-supported result of the entire
+session, but it is a real edge case, not a clean pass.** CAGR clears the
+target with no ambiguity in every draw. MaxDD, post-collar, lands right on
+the 30% line - 2 of 3 independent draws clear it, the third misses by a
+rounding error (30.1%). Given the demonstrated ~4pp natural MaxDD noise
+in the base strategy alone (before any hedge), a result landing within
+~1pp of the target on either side should be read as "at the boundary,"
+not decisively resolved either way. This is nonetheless the most
+practically credible candidate found all session: only a 1x hedge ratio
+(not idea B's earlier 2-3x on the raw stock-picker), pure long-only
+equities plus a modest, realistically-priced collar, CAGR far above
+target with high confidence, and MaxDD that is very likely in the
+low-to-high-20s to low-30s% range in practice - a large, real improvement
+over every un-hedged approach tried (43-66% MaxDD), even if "definitely
+under 30%" can't be claimed with full confidence given measurement noise
+this session's data pipeline introduces.
+
+Artifacts: `stability_check.py`,
+`results/stability_run{0,1,2}_20yr.csv`, `results/factorrot_alltime15_rerun_20yr.csv`.
+
+---
+
 ## Iteration 20 (validation) - Iteration 19's "meets target" claim RETRACTED
 
 Per direction to validate the `vote_threshold=1` result before trusting it.
