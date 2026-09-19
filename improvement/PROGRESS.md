@@ -1,5 +1,56 @@
 # Progress Log
 
+## Iteration 23 (does the LIVE strategy already meet target?) - No.
+
+Per explicit direction: the goal was never "beat MacroMom" specifically,
+it was CAGR>25%/MaxDD<30% by any means - if the live strategy already
+clears that bar once tested honestly, the search is over. Checked
+directly rather than assumed.
+
+**Confirmed MacroMom (`RegimeAdaptiveStrategy`) has the identical
+lookahead-bias architecture as everything else tested this session.**
+Both its sub-strategies fetch fundamentals the same way:
+`HighBetaGrowthStrategy` (already fixed in Iteration 22) and
+`BearBetaStrategy._batch_fetch_fundamentals()` - same
+`self._yahoo_provider.get_fundamentals_batch()` call, no date parameter.
+`BearBetaStrategy`'s scoring is majority price-history-derived (bear
+beta, down/up capture, total return - ~70% of its score weight, already
+point-in-time correct via `context.get_historical_prices`), with a
+minority fundamentals-derived component (sector 15pts, quality/dividend/
+margin 10pts, market-cap bonus 10pts, out of ~115) carrying the same bias
+as the other two sleeves, just with less weight.
+
+Built `PitBearBetaStrategy` and `PitRegimeAdaptiveStrategy`
+(`pit_strategies.py`) reusing 100% of the live bear-score computation and
+high-beta/bear-beta allocation blending unchanged (all price/macro-data
+driven, unaffected by the fundamentals fix) - only the fundamentals half
+of each sleeve was corrected, same pattern as Iteration 22. One known,
+minor gap: `current_ratio` and point-in-time `market_cap` aren't in the
+EDGAR ingestion (no shares-outstanding tag), so those two sub-components
+(max ~12/115 points) fall back to "no data" rather than being estimated.
+
+**Full 20yr daily-cadence result, same methodology as Iteration 22**
+(point-in-time fundamentals, daily cadence, slippage_bps=5.0, real
+SEC/FINRA fees):
+
+**PitRegimeAdaptive (MacroMom, point-in-time): 14.7% CAGR / 55.6% MaxDD /
+0.53 Sharpe.** Slippage $12,506, RegFees $400, Tax $7,802,703 over 20yr.
+
+**Does not meet the target, and is not close on either axis** - 10.4
+points short on CAGR, 25.6 points over on MaxDD. It's also *worse* on
+CAGR than just holding the unhedged stock-picker alone (Iteration 22's
+PitHighBetaOnly: 16.4%) - consistent with this session's very first
+finding back in Iteration 11-13 (the live strategy's timing overlay
+added ~zero value over 20 years) still holding true under corrected,
+honest conditions. The live strategy is not a shortcut past the rest of
+this session's search.
+
+Artifacts: `pit_strategies.py` (`PitBearBetaStrategy`,
+`PitRegimeAdaptiveStrategy`), `pit_macromom_comparison.py`,
+`results/pit_macromom_full_20yr.json`.
+
+---
+
 ## Iteration 22 (full redo: point-in-time data, daily cadence, real costs, no options) - MAJOR CORRECTION
 
 Per explicit direction to fix 4 things before trusting any further result:

@@ -26,6 +26,9 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'strategies'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'data'))
 from high_beta_strategy import HighBetaGrowthStrategy
+from bear_beta_strategy import BearBetaStrategy
+from regime_adaptive_strategy import RegimeAdaptiveStrategy
+from strategy import Portfolio
 from yahoo_data import StockFundamentals
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -104,6 +107,7 @@ class PitFundamentalsStore:
         roe = (net_income / equity) if (net_income is not None and equity and equity > 0) else None
         operating_margin = (operating_income / revenue) if (operating_income is not None and revenue and revenue > 0) else None
         gross_margin = (gross_profit / revenue) if (gross_profit is not None and revenue and revenue > 0) else None
+        profit_margin = (net_income / revenue) if (net_income is not None and revenue and revenue > 0) else None
         debt_to_equity = ((total_debt / equity) * 100) if (total_debt is not None and equity and equity > 0) else None
         free_cash_flow = (cash_from_ops - capex) if (cash_from_ops is not None and capex is not None) else None
         # No shares-outstanding tag ingested -> can't compute a precise
@@ -120,6 +124,7 @@ class PitFundamentalsStore:
             roe=roe,
             operating_margin=operating_margin,
             gross_margin=gross_margin,
+            profit_margin=profit_margin,
             revenue_growth=yoy_growth('Revenue'),
             earnings_growth=yoy_growth('NetIncome'),
             debt_to_equity=debt_to_equity,
@@ -184,6 +189,40 @@ class PitHighBetaGrowthStrategy(HighBetaGrowthStrategy):
                 self._fundamentals_cache.pop(ticker, None)
 
 
+class PitBearBetaStrategy(BearBetaStrategy):
+    """Point-in-time version of MacroMom's defensive sleeve. bear_beta/
+    down_capture/up_capture/total_return (the majority of this strategy's
+    scoring weight, ~70%) are already point-in-time correct - they come
+    from context.get_historical_prices(), same as HighBetaGrowthStrategy's
+    beta calc. Only the minority fundamentals-derived components (sector
+    15pts, quality/dividend+margin+current_ratio 10pts, market-cap bonus
+    10pts, out of ~115 total) carried the live-data lookahead bias - fixed
+    the same way as the other two sleeves. current_ratio and point-in-time
+    market_cap aren't ingested (no shares-outstanding tag / EDGAR doesn't
+    have a current_ratio-ready pair of tags in this pipeline) so those two
+    sub-components fall back to their existing "no data -> 0 points"
+    handling rather than being estimated - a known, minor (max ~12pts/115)
+    gap, not silently papered over.
+    """
+    def __init__(self, pit_store: PitFundamentalsStore, **kwargs):
+        super().__init__(**kwargs)
+        self._pit_store = pit_store
+        self._pit_asof_date = None
+
+    def execute(self, context):
+        self._pit_asof_date = context.date
+        return super().execute(context)
+
+    def _batch_fetch_fundamentals(self, tickers):
+        asof = self._pit_asof_date
+        for ticker in tickers:
+            fund = self._pit_store.get_fundamentals_asof(ticker, asof) if asof else None
+            if fund is not None:
+                self._fundamentals_cache[ticker] = fund
+            else:
+                self._fundamentals_cache.pop(ticker, None)
+
+
 class PitQualityDefensiveStrategy(QualityDefensiveStrategy):
     def __init__(self, pit_store: PitFundamentalsStore, **kwargs):
         super().__init__(**kwargs)
@@ -197,3 +236,28 @@ class PitQualityDefensiveStrategy(QualityDefensiveStrategy):
                 self._fundamentals_cache[ticker] = fund
             else:
                 self._fundamentals_cache.pop(ticker, None)
+
+
+class PitRegimeAdaptiveStrategy(RegimeAdaptiveStrategy):
+    """Point-in-time version of the live MacroMom strategy: identical
+    bear-score computation and high-beta/bear-beta allocation blending
+    (all derived from price/macro time series, already point-in-time
+    correct), with both sub-strategies swapped for their Pit- (SEC EDGAR
+    point-in-time fundamentals) equivalents. Tests the user's actual
+    question directly: does the LIVE strategy, not a new one, already
+    clear the CAGR>25%/MaxDD<30% target once fundamentals lookahead bias
+    is removed?
+    """
+    def __init__(self, pit_store: PitFundamentalsStore, **kwargs):
+        super().__init__(**kwargs)
+        db_path = kwargs.get('db_path', 'fundamentals.sqlite')
+        max_positions = kwargs.get('max_positions', 25)
+        rebalance_days = kwargs.get('rebalance_days', 30)
+        hb_params = kwargs.get('high_beta_params') or {}
+        bb_params = kwargs.get('bear_beta_params') or {}
+        self.high_beta_strategy = PitHighBetaGrowthStrategy(
+            pit_store=pit_store, db_path=db_path,
+            max_positions=max(10, max_positions // 2), rebalance_days=rebalance_days, **hb_params)
+        self.bear_beta_strategy = PitBearBetaStrategy(
+            pit_store=pit_store, db_path=db_path,
+            max_positions=max(10, max_positions // 2), rebalance_days=rebalance_days, **bb_params)
