@@ -1,5 +1,66 @@
 # Progress Log
 
+## Iteration 24 (redesigned stock-picker: momentum) - real CAGR improvement, MaxDD still open
+
+Per explicit direction after Iteration 23: stop tuning timing/hedging
+around the existing fundamentals-based picker (exhausted, per session
+synthesis) and redesign the RETURN source itself.
+
+**`momentum_strategy.py` - cross-sectional 12-1 momentum + absolute
+trend filter ("dual momentum", Antonacci)**: ranks candidates by trailing
+12-month return excluding the most recent month (standard momentum-
+literature construction, avoids short-term reversal), keeps only those
+currently above their own N-day SMA (the per-stock absolute-trend
+filter - controls momentum's well-documented crash risk), takes the top
+`max_positions` by momentum score. Needs NO fundamentals data at all -
+pure price history via `context.get_historical_prices()`, already
+point-in-time correct - sidesteps the entire yfinance-`.info`/SEC-EDGAR
+reliability problem this session spent so much effort on. A genuine
+practical advantage of this redesign, not just a different return
+source.
+
+**20yr monthly-cadence sweep** (`momentum_sweep.py`, 10 variants, real
+slippage+fees, no options):
+
+| Variant | CAGR | MaxDD | Sharpe |
+|---|---|---|---|
+| **9mo lookback, monthly rebal, 15 pos, 200d trend** | **21.7%** | 55.1% | 4.48 |
+| 6mo lookback, monthly rebal, 15 pos, 200d trend | 21.6% | 62.0% | 4.46 |
+| 6mo lookback + inverse-vol weighting | 19.1% | 60.8% | 4.24 |
+| 12mo lookback, 10 positions (more concentrated) | 18.8% | 53.2% | 3.73 |
+| 12mo lookback, 15 positions (baseline) | 16.2% | 54.0% | 3.56 |
+| 12mo lookback, looser trend filter (150d) | 15.9% | 49.7% | 3.54 |
+| 12mo lookback, quarterly rebalance | 15.8% | 55.2% | 3.48 |
+| 12mo lookback, bimonthly rebalance | 15.4% | 57.4% | 3.37 |
+| 12mo lookback + inverse-vol weighting | 14.7% | 51.0% | 3.42 |
+| 12mo lookback, much looser trend filter (100d) | 14.2% | 53.1% | 3.33 |
+| 12mo lookback, 25 positions (more diversified) | 13.7% | 55.3% | 3.41 |
+
+**Real, meaningful finding: momentum genuinely adds return** the way
+nothing else this session did. Best variant's 21.7% CAGR beats the
+honest fundamentals-picker ceiling (16.4%, Iteration 22) by 5+ points -
+this is a better return source, confirming the session-23 hypothesis
+that the CAGR gap needed a new selection edge, not smarter timing.
+Inverse-vol weighting consistently costs more CAGR than the MaxDD it
+saves (same pattern as every other risk-dampening mechanism tried this
+session) - not a useful lever here either.
+
+**Still short on MaxDD (55.1% vs <30% target)** - concentrated momentum
+in ~15 names carries large drawdown risk (2008/2020/2022 all hit hard),
+similar magnitude to the fundamentals-based picker's honest MaxDD
+(58.1%). Per-stock absolute-trend filtering alone isn't enough - it
+still buys "the best of a bad bunch" during a broad bear market as long
+as SOME candidates are individually above their own trend line. Next:
+test a MARKET-level (not just per-stock) absolute trend filter - the
+actual dual-momentum construction applies the trend/regime filter at
+the asset-class level (e.g. SPY vs its own 200d SMA), only de-risking
+during genuine broad downturns rather than never at the portfolio level.
+
+Artifacts: `momentum_strategy.py`, `momentum_sweep.py`,
+`results/momentum_sweep_20yr_monthly.json`.
+
+---
+
 ## Iteration 23 (does the LIVE strategy already meet target?) - No.
 
 Per explicit direction: the goal was never "beat MacroMom" specifically,
