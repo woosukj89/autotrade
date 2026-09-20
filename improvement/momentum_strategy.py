@@ -66,6 +66,7 @@ class MomentumStrategy(Strategy):
         market_filter_defensive_weight: float = 0.0,  # fraction to KEEP invested when market is below trend (0 = full cash)
         market_filter_buffer_pct: float = 0.02,  # hysteresis band around the SMA
         market_filter_confirm_days: int = 5,     # consecutive days required before a flip is confirmed
+        external_exposure_series: Optional[pd.Series] = None,  # date-indexed 0..1 exposure, overrides the internal SMA filter entirely
     ):
         self.max_positions = max_positions
         self.lookback_days = lookback_days
@@ -86,6 +87,7 @@ class MomentumStrategy(Strategy):
         self._market_state_healthy = True   # confirmed state, persists across calls
         self._market_pending_flip = None    # 'healthy'/'unhealthy' candidate awaiting confirmation
         self._market_pending_days = 0
+        self.external_exposure_series = external_exposure_series
 
         self._eligible_tickers: Optional[set] = None
         self._ticker_sectors: Dict[str, str] = {}
@@ -153,6 +155,14 @@ class MomentumStrategy(Strategy):
         requirement (market_filter_confirm_days consecutive days on the
         new side) before a flip is actually confirmed and acted on.
         """
+        if self.external_exposure_series is not None:
+            idx = self.external_exposure_series.index
+            ts = pd.Timestamp(context.date)
+            pos = idx.searchsorted(ts, side='right') - 1
+            if pos < 0:
+                return 1.0
+            return float(self.external_exposure_series.iloc[pos])
+
         if not self.market_filter:
             return 1.0
         hist = context.get_historical_prices(self.market_filter_ticker, self.market_filter_sma_days + 5)

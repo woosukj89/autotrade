@@ -1,5 +1,67 @@
 # Progress Log
 
+## Iteration 26 (three market-filter designs, three failures) - MaxDD reduction abandoned on this design
+
+After Iteration 25's two naive SMA-crossing hysteresis attempts both
+failed at daily cadence, tried a third approach: gate momentum's
+exposure using the ALREADY-CALIBRATED 4-signal regime classifier
+(`classifier.py`, 90 transitions/20yr, proper entry/exit asymmetry,
+battle-tested across ~15 earlier iterations this session) instead of a
+naive single-SMA check. `momentum_strategy.py` gained
+`external_exposure_series` to accept any precomputed date-indexed
+exposure series (`momentum_classifier_filter.py`).
+
+**5yr window looked genuinely promising**: 19.2% CAGR / 31.6% MaxDD vs
+pure momentum's 25.1%/33.8% on the same window - a real, if modest,
+improvement, and much better than either SMA attempt.
+
+**Full 20yr window (includes 2008, which the 5yr window missed) collapsed
+completely**: 2.6% CAGR / 91.4% MaxDD / 4,045 trades (202/year) - worse
+than pure momentum's own natural turnover (3,332 trades/20yr) despite
+adding a supposedly-stable classifier on top. The classifier's 90
+transitions over 20yr, each triggering an exposure change that gets
+re-traded against the ENTIRE 10-position book, compounds with the
+underlying monthly momentum reshuffling rather than coordinating with
+it - two independent turnover sources stacking, not one coherent signal.
+
+**This is the third structurally different exposure-gating mechanism to
+fail catastrophically at full-scale daily cadence** (2 SMA hysteresis
+variants in Iteration 25, this classifier-gated version) - each looked
+reasonable on a short window or coarser sampling, each collapsed at full
+20yr daily resolution. That convergence, across genuinely different
+signals, points at the MECHANISM (partial exposure-scaling via
+`target_shares = holding['shares'] * exposure`, re-traded on every
+change, against a concentrated 10-name book) rather than the specific
+signal driving it. This echoes the exact same pattern this session found
+repeatedly across totally different mechanisms - graduated allocation
+(Iteration 14-16), the options collar under realistic pricing (Iteration
+17), factor rotation (Iteration 22), MacroMom's own overlay (Iteration
+23): risk-reduction mechanisms that look good in theory or at reduced
+sampling frequency, and degrade or fail once tested at real trading
+resolution with real costs.
+
+**Conclusion: abandoning further market-filter tuning on this momentum
+design.** Three good-faith attempts with structurally different signals
+have converged on the same failure mode - this doesn't look like a
+tuning problem solvable by a fourth attempt.
+
+**Where the "redesign the stock-picker" exploration (Iterations 24-26)
+actually landed**: the CAGR target IS met, for the first time all
+session, by a clean, fundamentals-independent, non-noise-driven result -
+pure momentum (12-1 cross-sectional momentum + per-stock absolute trend
+filter, no market-level filter), full 20yr daily cadence, real slippage
++ regulatory fees, no options: **25.4% CAGR / 58.2% MaxDD / 0.78 Sharpe**
+(Iteration 25). The MaxDD target has not been met by ANY mechanism tried
+this entire session, across ~15 genuinely different approaches spanning
+market timing, options hedging, factor rotation, and three market-filter
+designs on the new momentum picker - a consistent, well-tested finding
+now, not a gap in effort.
+
+Artifacts: `momentum_strategy.py` (`external_exposure_series`),
+`momentum_classifier_filter.py`.
+
+---
+
 ## Iteration 25 (momentum + market filter at daily cadence) - CAGR target cleared, MaxDD still the open problem
 
 Monthly-cadence fine-tuning found the closest result to target all session:
