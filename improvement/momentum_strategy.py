@@ -67,6 +67,13 @@ class MomentumStrategy(Strategy):
         market_filter_buffer_pct: float = 0.02,  # hysteresis band around the SMA
         market_filter_confirm_days: int = 5,     # consecutive days required before a flip is confirmed
         external_exposure_series: Optional[pd.Series] = None,  # date-indexed 0..1 exposure, overrides the internal SMA filter entirely
+        stop_loss_pct: Optional[float] = None,  # trailing stop per position (e.g. 0.15 = exit if 15% below its peak since entry) - CANSLIM/turtle-trader style, bottom-up not portfolio-level
+        atr_stop_multiplier: Optional[float] = None,  # volatility-ADJUSTED trailing stop: exit if price < peak - multiplier*ATR (the actual Turtle Trader technique). Takes precedence over stop_loss_pct if both set.
+        vol_target: Optional[float] = None,  # Barroso & Santa-Clara style: target annualized portfolio vol (e.g. 0.20); exposure = clip(vol_target/realized_vol, min, max). Continuous/smooth, not a binary regime switch.
+        vol_target_lookback_days: int = 20,
+        vol_target_min_exposure: float = 0.3,
+        vol_target_max_exposure: float = 1.0,  # capped at 1.0 - long-only, no leverage
+        vol_target_tolerance: float = 0.10,  # only re-trade when target exposure drifts more than this from what's currently implemented
     ):
         self.max_positions = max_positions
         self.lookback_days = lookback_days
@@ -88,6 +95,15 @@ class MomentumStrategy(Strategy):
         self._market_pending_flip = None    # 'healthy'/'unhealthy' candidate awaiting confirmation
         self._market_pending_days = 0
         self.external_exposure_series = external_exposure_series
+        self.stop_loss_pct = stop_loss_pct
+        self.atr_stop_multiplier = atr_stop_multiplier
+        self.vol_target = vol_target
+        self.vol_target_lookback_days = vol_target_lookback_days
+        self.vol_target_min_exposure = vol_target_min_exposure
+        self.vol_target_max_exposure = vol_target_max_exposure
+        self.vol_target_tolerance = vol_target_tolerance
+        self._value_history: List[float] = []
+        self._implemented_vol_exposure = 1.0
 
         self._eligible_tickers: Optional[set] = None
         self._ticker_sectors: Dict[str, str] = {}
@@ -131,9 +147,24 @@ class MomentumStrategy(Strategy):
         vol_window = min(self.vol_lookback_days, len(rets))
         volatility = float(rets.tail(vol_window).std()) if vol_window > 5 else None
 
+        # ATR (Average True Range) - for the volatility-ADJUSTED stop-loss.
+        # A flat % stop tested worse than no stop at all (15% whipsawed
+        # badly, 35% was too wide to ever matter) precisely because
+        # momentum names have wildly different individual volatility - a
+        # stop distance sized to each stock's OWN recent true range (the
+        # actual Turtle Trader technique, not a flat %) is what the
+        # trend-following literature actually uses.
+        atr = None
+        if 'High' in hist.columns and 'Low' in hist.columns:
+            h, l, c = hist['High'], hist['Low'], hist['Close'].shift(1)
+            tr = pd.concat([(h - l), (h - c).abs(), (l - c).abs()], axis=1).max(axis=1)
+            atr_window = min(20, len(tr.dropna()))
+            if atr_window > 5:
+                atr = float(tr.tail(atr_window).mean())
+
         return {
             'ticker': ticker, 'momentum': momentum, 'above_trend': above_trend,
-            'price': current_price, 'volatility': volatility,
+            'price': current_price, 'volatility': volatility, 'atr': atr,
         }
 
     def _market_exposure(self, context: ExecutionContext) -> float:
@@ -199,6 +230,74 @@ class MomentumStrategy(Strategy):
 
         return 1.0 if self._market_state_healthy else self.market_filter_defensive_weight
 
+    def _apply_stop_losses(self, context: ExecutionContext) -> None:
+        """CANSLIM/turtle-trader style: a per-position trailing stop,
+        checked every day regardless of the rebalance schedule. Stopped-
+        out capital goes to cash until the next scheduled re-ranking
+        (classic stop-loss discipline - get out and stay out, don't try
+        to immediately redeploy). Deliberately bottom-up and independent
+        per ticker - unlike every market-level exposure filter tried
+        (and failed) in Iteration 25/26, there's no synchronized whole-
+        portfolio action here, so it shouldn't reproduce the same
+        whipsaw-driven turnover blowup.
+        """
+        if (not self.stop_loss_pct and not self.atr_stop_multiplier) or not self._holdings:
+            return
+        stopped = []
+        for ticker, holding in self._holdings.items():
+            price = context.get_price(ticker)
+            if not price:
+                continue
+            if price > holding['peak_price']:
+                holding['peak_price'] = price
+            if self.atr_stop_multiplier and holding.get('atr'):
+                stop_level = holding['peak_price'] - self.atr_stop_multiplier * holding['atr']
+                if price < stop_level:
+                    stopped.append(ticker)
+            elif self.stop_loss_pct:
+                if price < holding['peak_price'] * (1 - self.stop_loss_pct):
+                    stopped.append(ticker)
+        for ticker in stopped:
+            del self._holdings[ticker]
+        if stopped:
+            print(f"[Momentum] Stopped out on {context.date.strftime('%Y-%m-%d')}: {stopped}")
+
+    def _vol_target_exposure(self, total_value: float) -> float:
+        """Barroso & Santa-Clara ("Momentum has its Moments", 2015):
+        scale exposure by target_vol / realized_vol, using the
+        STRATEGY'S OWN trailing realized volatility (tracked from this
+        strategy's own portfolio value history, not an external market
+        signal). Continuous and smooth - unlike every market-filter
+        design tried in Iteration 25/26 (all binary/near-binary regime
+        switches that whipsawed badly at daily cadence), this drifts
+        gradually as realized vol changes, so it shouldn't reproduce the
+        same synchronized-whole-portfolio-flip turnover blowup. Directly
+        targets momentum's well-documented crash risk: momentum crashes
+        cluster in exactly the high-realized-vol periods this scales
+        away from.
+        """
+        self._value_history.append(total_value)
+        if not self.vol_target:
+            return 1.0
+        if len(self._value_history) < self.vol_target_lookback_days + 1:
+            return 1.0
+        window = self._value_history[-(self.vol_target_lookback_days + 1):]
+        rets = pd.Series(window).pct_change().dropna()
+        realized_vol = float(rets.std() * (252 ** 0.5))
+        if realized_vol <= 0:
+            return 1.0
+        raw = self.vol_target / realized_vol
+        target = float(np.clip(raw, self.vol_target_min_exposure, self.vol_target_max_exposure))
+        # Tolerance band: a "smooth" signal recomputed and RE-TRADED every
+        # single day is not actually smooth in its trading impact - it
+        # produces a small trade on every position every day (7,914
+        # trades/5yr, -69% CAGR/99.9% MaxDD observed without this fix).
+        # Only actually move exposure when it has drifted meaningfully
+        # from what's currently implemented.
+        if abs(target - self._implemented_vol_exposure) >= self.vol_target_tolerance:
+            self._implemented_vol_exposure = target
+        return self._implemented_vol_exposure
+
     def execute(self, context: ExecutionContext) -> Portfolio:
         if self._eligible_tickers is None:
             self._load_eligible_tickers()
@@ -248,6 +347,7 @@ class MomentumStrategy(Strategy):
                 if shares > 0:
                     self._holdings[sig['ticker']] = {
                         'shares': shares, 'entry_price': sig['price'], 'momentum': sig['momentum'],
+                        'peak_price': sig['price'], 'atr': sig.get('atr'),
                     }
 
             self._last_rebalance = context.date
@@ -256,7 +356,8 @@ class MomentumStrategy(Strategy):
                 for t, h in list(self._holdings.items())[:10]:
                     print(f"  {t}: mom={h['momentum']*100:.1f}%")
 
-        exposure = self._market_exposure(context)
+        self._apply_stop_losses(context)
+        exposure = self._market_exposure(context) * self._vol_target_exposure(total_value)
 
         positions = {}
         invested = 0.0

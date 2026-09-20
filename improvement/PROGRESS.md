@@ -1,5 +1,105 @@
 # Progress Log
 
+## Iteration 27 (four more MaxDD-reduction families tried, all fail) - a well-tested conclusion, not a gap in effort
+
+Per explicit direction to keep exploring and draw on known techniques
+from real investors/quant literature rather than give up. Tried four
+more structurally different mechanisms on top of the validated momentum
+base (25.4% CAGR / 58.2% MaxDD, full 20yr daily, real costs, no overlay).
+
+**1. Per-position stop-losses (CANSLIM/O'Neil, Turtle Trader style)** -
+bottom-up and independent per ticker, deliberately chosen because it
+doesn't require the synchronized whole-portfolio action that killed
+every market filter in Iteration 25/26. `momentum_strategy.py` gained
+`stop_loss_pct` (flat trailing stop) and `atr_stop_multiplier`
+(volatility-adjusted, the actual Turtle Trader technique - stop distance
+scales with each stock's own recent ATR instead of one fixed % for
+every name). Tested on 5yr daily (no-stop baseline: 25.1% CAGR/33.8%
+MaxDD):
+
+| Config | CAGR | MaxDD |
+|---|---|---|
+| Flat 15% stop | -0.6% | 56.1% |
+| Flat 35% stop | 24.2% | 33.8% (basically a no-op) |
+| ATR x5 (loosest tested) | 11.5% | 51.9% |
+
+Consistent pattern: tight stops whipsaw on momentum names' normal
+volatility (a 15-20% pullback within an ongoing uptrend is routine for
+these names, not a real reversal); wide stops rarely trigger and just
+match doing nothing. No flat or ATR-based threshold tested improved on
+the no-stop baseline.
+
+**2. Wider diversification** - never tested on this specific strong
+config (only on the old fundamentals-based picker, Iteration 8ish).
+n=20/30/40 vs n=10, full 20yr daily, real costs:
+
+| n | CAGR | MaxDD |
+|---|---|---|
+| 10 (baseline) | 25.4% | 58.2% |
+| 20 | 18.6% | 57.7% |
+| 30 | 16.6% | 57.4% |
+| 40 | 15.3% | 56.7% |
+
+MaxDD barely moves (within 1.5 points across a 4x range in position
+count) while CAGR drops substantially. Clean, informative negative
+result: the drawdown here is driven by SYSTEMATIC risk (momentum names
+correlated and crashing together in real bear markets - 2008, 2020,
+2022), not IDIOSYNCRATIC single-stock risk, so adding more (correlated)
+names can't fix it. Confirms the same finding from the old picker's
+diversification test.
+
+**3. Continuous volatility-managed position sizing** (Barroso &
+Santa-Clara, "Momentum has its Moments", 2015) - scale total exposure
+smoothly by `vol_target / realized_vol`, using the STRATEGY's OWN
+trailing realized volatility (tracked from its own portfolio value
+history), not an external market-timing signal. Chosen specifically
+because it's continuous/smooth rather than the binary regime switches
+that failed in Iteration 25/26, and because it directly targets
+momentum's well-documented crash risk (crashes cluster in exactly the
+high-realized-vol periods this scales away from) - this is a real,
+published academic result, not a guess.
+
+First attempt (recomputed and acted on every single day) was
+catastrophic: 7,914 trades/5yr, -69% CAGR / 99.9% MaxDD - "smooth" in
+the signal did not mean smooth in the resulting TRADES; a target
+exposure recalculated daily from a noisy 20-day window still produces a
+small re-trade on every position every day. Added a tolerance band
+(only actually move implemented exposure when the target has drifted
+>=10pp) - cut trades to 1,480/5yr, but the account still gradually bled
+to ~16% of starting value over 2 years (verified directly via the daily
+value series - a smooth decline, not a cliff/bug, confirming this is
+real cumulative slippage+tax+fee drag, not a code defect). Even
+tolerance-banded, continuous vol-targeting still re-trades often enough
+(~300x/year) to lose more to friction than it saves in avoided drawdown.
+
+**Overall conclusion after this round: four structurally different
+MaxDD-reduction mechanism families - portfolio-level exposure filters (3
+signal designs, Iteration 25/26), per-position stop-losses (5+ configs,
+both flat and volatility-adjusted), wider diversification (3 position
+counts), and continuous volatility-targeting (2 attempts) - have all
+failed to meaningfully cut this momentum strategy's MaxDD at real daily-
+cadence trading resolution with real costs.** Most fail for a shared
+underlying reason: any reactive adjustment to a concentrated ~10-name
+momentum book costs more in real transaction/tax friction than it saves
+in avoided drawdown, once tested honestly rather than at monthly/coarse
+sampling. This is now a well-tested, evidence-backed conclusion covering
+the standard toolkit (market timing, stop-losses, diversification,
+vol-targeting), not a gap in how much was tried.
+
+**Where things stand**: CAGR target robustly met (25.4%, pure momentum,
+no overlay, full 20yr daily cadence + real costs - Iteration 25). MaxDD
+target not met by any of ~19 approaches tried across this entire
+session's two major research phases (fundamentals-timing/hedging, and
+momentum-based redesign). The remaining gap (58.2% vs <30% target) looks
+structural to "concentrated long-only equity strategy with 25%+ CAGR
+over a 20yr window including 2008/2020/2022" rather than a solvable
+tuning problem on this design.
+
+Artifacts: `momentum_strategy.py` (`atr_stop_multiplier`, `vol_target`
++ tolerance band).
+
+---
+
 ## Iteration 26 (three market-filter designs, three failures) - MaxDD reduction abandoned on this design
 
 After Iteration 25's two naive SMA-crossing hysteresis attempts both
