@@ -78,9 +78,40 @@ the no-filter baseline (58.2%) for a cost of only 2.3 points of CAGR -
 2.1pp short of the CAGR target, 3.9pp over the MaxDD target. This
 confirms Iteration 25-27's "reactive risk-reduction fundamentally
 doesn't work due to transaction costs" conclusion was **substantially
-wrong** - driven by this tax bug, not a genuine structural limit. Now
-testing nearby parameter variations to see if this can be pushed across
-both targets simultaneously.
+wrong** - driven by this tax bug, not a genuine structural limit.
+
+**Follow-up tuning, full 20yr daily, tax bug fixed:**
+
+| Variant | CAGR | MaxDD | Verdict |
+|---|---|---|---|
+| defw=0.30, confirm=5, buffer=2% (base) | 23.1% | 33.9% | best found |
+| defw=0.20 (deeper de-risking) | 22.7% | 33.9% | no MaxDD improvement, worse CAGR |
+| confirm=2, buffer=1.5% (faster reaction) | 22.5% | 33.4% | marginal MaxDD gain, worse CAGR - a wash |
+| + ATR stop-loss (mult=5) combined | 19.8% | 35.5% | worse on BOTH axes - the two mechanisms conflict |
+
+**Three genuinely different tuning directions - deeper de-risking, faster
+reaction, and a complementary per-stock stop-loss layered on top - all
+failed to improve on the base config.** Deeper de-risking and faster
+reaction both converge to the same ~33-34% MaxDD band regardless, which
+means the drawdown is happening in the confirmation window before the
+filter can react (consistent with a fast crash like COVID 2020), not
+from insufficient depth once triggered - no amount of retuning THIS lever
+closes that gap. Layering the ATR stop on top actively hurts (redundant/
+conflicting trades from two mechanisms acting on the same positions).
+
+**Honest conclusion: 23.1% CAGR / 33.9% MaxDD, market-filtered momentum,
+is the best fully-validated result of the entire session** (bug-fixed,
+daily cadence matching the live cron, point-in-time-clean by
+construction since momentum needs no fundamentals data, real slippage +
+regulatory fees, no options). 2.1pp short on CAGR, 3.9pp over on MaxDD -
+close, genuinely validated progress, not yet a confirmed pass. Given
+three structurally different tuning attempts on this specific mechanism
+converged to the same plateau, further improvement likely needs a
+different lever again (not more tuning of this one) - candidates not yet
+tried post-fix: wider diversification specifically WITH the market
+filter (untested combination - the n=20/30/40 diversification test in
+Iteration 27 had no market filter at all), or accepting this as the
+practical ceiling for this strategy family and revisiting the targets.
 
 Artifacts: `backtest.py` (tax fix, commit `d1175b8`).
 
