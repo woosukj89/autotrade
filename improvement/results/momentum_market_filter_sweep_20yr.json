@@ -1,0 +1,32 @@
+{
+  "no market filter (baseline)": {
+    "cagr": 0.21732185733896525,
+    "max_drawdown": 0.550716093633224,
+    "sharpe_ratio": 4.476492443293278
+  },
+  "market filter, SMA200, full cash": {
+    "cagr": 0.21627640362626344,
+    "max_drawdown": 0.31318965139668375,
+    "sharpe_ratio": 5.4078685577467684
+  },
+  "market filter, SMA150, full cash": {
+    "cagr": 0.20690322100185,
+    "max_drawdown": 0.3131757184038219,
+    "sharpe_ratio": 5.2538762629450355
+  },
+  "market filter, SMA200, 30% kept invested": {
+    "cagr": 0.22071871814736688,
+    "max_drawdown": 0.27578873826533373,
+    "sharpe_ratio": 5.392138318030323
+  },
+  "market filter, SMA200, 50% kept invested": {
+    "cagr": 0.22109841061263547,
+    "max_drawdown": 0.3220106873534639,
+    "sharpe_ratio": 5.203347428410967
+  },
+  "market filter, SMA100, full cash": {
+    "cagr": 0.17823433314196424,
+    "max_drawdown": 0.2762820191481561,
+    "sharpe_ratio": 4.910364508201505
+  }
+}

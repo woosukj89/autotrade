@@ -1,5 +1,68 @@
 # Progress Log
 
+## Iteration 25 (momentum + market filter at daily cadence) - CAGR target cleared, MaxDD still the open problem
+
+Monthly-cadence fine-tuning found the closest result to target all session:
+9mo lookback, 10 positions, market filter (SPY vs SMA200, 30% kept
+invested when below trend) = **25.9% CAGR / 24.6% MaxDD / 5.63 Sharpe**
+(20yr monthly). Per this session's established discipline (the
+vote_threshold=1 retraction, the daily-cadence factor-rotation
+degradation), did NOT trust this without daily-cadence + real-cost
+validation first.
+
+**Raw daily-cadence validation was a disaster**: -1.6% CAGR / 92.9%
+MaxDD / 4,402 trades over 20yr. Diagnosed directly: the market filter
+checked SPY vs its SMA every single day with no persistence, and SPY
+chops around its own 200d SMA constantly in real markets - each crossing
+forced a full 70-percentage-point portfolio resize (100%<->30%
+exposure), repeatedly buying high and selling low.
+
+**Fixed with hysteresis** (same pattern as the classifier vote-signal
+smoothing fix, Iteration 14-16): a buffer band around the SMA (crossings
+inside the band don't count) plus a persistence requirement (N
+consecutive days on the new side before a flip is confirmed and acted
+on), tracked as state that persists across calls rather than recomputed
+fresh each day. First attempt (2% buffer, 5-day confirm) improved things
+but was still bad on a 5yr window (8.5% CAGR / 61% MaxDD, 901 trades) -
+better than catastrophic, not yet good.
+
+**Isolated the cause precisely**: ran pure momentum with NO market
+filter at daily cadence on the same 5yr window - **25.1% CAGR / 33.8%
+MaxDD**, a clean, reasonable number. This proved the momentum stock-
+selection/rebalancing itself handles daily cadence fine (865 trades/5yr
+from normal monthly reshuffling isn't excessive) - the market filter,
+even hysteresis-fixed, was still specifically the problem, likely a
+handful of costly whipsaw round-trips during real volatile stretches
+(2018 Q4, 2020 COVID crash+recovery, 2022) where a 70pp exposure swing
+got triggered and mistimed relative to the sharpest recovery days.
+
+**Full 20yr daily-cadence result, pure momentum (no market filter)**:
+**25.4% CAGR / 58.2% MaxDD / 0.78 Sharpe.** The 5yr window (33.8% MaxDD)
+was not representative - it missed 2008, the worst historical drawdown.
+On the full 20yr window, momentum alone has MaxDD in the same range as
+the fundamentals-based picker's honest number (58.1%, Iteration 22) -
+confirms momentum fixes the RETURN side (CAGR clears 25.1% with real
+margin, matching the session-23 hypothesis that a genuinely better
+return source was needed) but does nothing for drawdown risk by itself;
+concentrated single-digit-count equity portfolios crash hard in
+systemic bear markets regardless of selection methodology.
+
+**Status: CAGR target is cleared (first time all session, on a clean,
+non-noise-driven, fundamentals-independent result). MaxDD is still the
+open problem** - the market-filter concept (de-risk during genuine
+broad downturns) is directionally right (it took MaxDD from 58%+ down to
+the mid-20s% in the flawed-but-suggestive monthly-cadence sweep) but the
+daily-cadence implementation needs a more patient hysteresis than the
+first attempt. Testing a substantially more conservative version (4%
+buffer, 15-day confirm) next.
+
+Artifacts: `momentum_strategy.py` (market filter + hysteresis),
+`momentum_market_filter_sweep.py`, `momentum_finetune_sweep.py`,
+`results/momentum_market_filter_sweep_20yr.json`,
+`results/momentum_finetune_sweep_20yr.json`.
+
+---
+
 ## Iteration 24 (redesigned stock-picker: momentum) - real CAGR improvement, MaxDD still open
 
 Per explicit direction after Iteration 23: stop tuning timing/hedging

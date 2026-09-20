@@ -60,6 +60,12 @@ class MomentumStrategy(Strategy):
         vol_scale_weighting: bool = False,
         vol_lookback_days: int = 60,
         min_price: float = 5.0,
+        market_filter: bool = False,
+        market_filter_ticker: str = 'SPY',
+        market_filter_sma_days: int = 200,
+        market_filter_defensive_weight: float = 0.0,  # fraction to KEEP invested when market is below trend (0 = full cash)
+        market_filter_buffer_pct: float = 0.02,  # hysteresis band around the SMA
+        market_filter_confirm_days: int = 5,     # consecutive days required before a flip is confirmed
     ):
         self.max_positions = max_positions
         self.lookback_days = lookback_days
@@ -71,6 +77,15 @@ class MomentumStrategy(Strategy):
         self.vol_scale_weighting = vol_scale_weighting
         self.vol_lookback_days = vol_lookback_days
         self.min_price = min_price
+        self.market_filter = market_filter
+        self.market_filter_ticker = market_filter_ticker
+        self.market_filter_sma_days = market_filter_sma_days
+        self.market_filter_defensive_weight = market_filter_defensive_weight
+        self.market_filter_buffer_pct = market_filter_buffer_pct
+        self.market_filter_confirm_days = market_filter_confirm_days
+        self._market_state_healthy = True   # confirmed state, persists across calls
+        self._market_pending_flip = None    # 'healthy'/'unhealthy' candidate awaiting confirmation
+        self._market_pending_days = 0
 
         self._eligible_tickers: Optional[set] = None
         self._ticker_sectors: Dict[str, str] = {}
@@ -118,6 +133,61 @@ class MomentumStrategy(Strategy):
             'ticker': ticker, 'momentum': momentum, 'above_trend': above_trend,
             'price': current_price, 'volatility': volatility,
         }
+
+    def _market_exposure(self, context: ExecutionContext) -> float:
+        """Market-level absolute trend filter (the asset-class-level half
+        of "dual momentum" - Antonacci): 1.0 (fully invested) when the
+        market itself is above its own trend SMA, else
+        market_filter_defensive_weight (0.0 = full cash by default).
+
+        Checked every call, but with hysteresis: a raw daily SMA-cross
+        check, tried first, was catastrophic (-1.6% CAGR / 92.9% MaxDD
+        at daily cadence, 4402 trades/20yr) - SPY chops around its own
+        200d SMA constantly in real markets, and a binary flip forces a
+        full portfolio resize (100%<->30% exposure) on every crossing,
+        repeatedly buying high and selling low. Fixed the same way the
+        regime classifier's vote signal was fixed earlier this session
+        (see classifier.py / PROGRESS.md Iteration 14-16): a buffer band
+        around the SMA (market_filter_buffer_pct) so small wiggles right
+        at the line don't count as a real cross, plus a persistence
+        requirement (market_filter_confirm_days consecutive days on the
+        new side) before a flip is actually confirmed and acted on.
+        """
+        if not self.market_filter:
+            return 1.0
+        hist = context.get_historical_prices(self.market_filter_ticker, self.market_filter_sma_days + 5)
+        if hist is None or len(hist) < self.market_filter_sma_days * 0.9:
+            return self.market_filter_defensive_weight if not self._market_state_healthy else 1.0
+        closes = hist['Close'].dropna()
+        if len(closes) < 20:
+            return self.market_filter_defensive_weight if not self._market_state_healthy else 1.0
+        current = float(closes.iloc[-1])
+        sma = float(closes.tail(min(self.market_filter_sma_days, len(closes))).mean())
+
+        buf = self.market_filter_buffer_pct
+        if current > sma * (1 + buf):
+            raw_healthy = True
+        elif current < sma * (1 - buf):
+            raw_healthy = False
+        else:
+            raw_healthy = None  # inside the dead-band: no opinion, don't disturb pending confirmation
+
+        target = 'healthy' if raw_healthy is True else ('unhealthy' if raw_healthy is False else None)
+        if target is not None and target != ('healthy' if self._market_state_healthy else 'unhealthy'):
+            if self._market_pending_flip == target:
+                self._market_pending_days += 1
+            else:
+                self._market_pending_flip = target
+                self._market_pending_days = 1
+            if self._market_pending_days >= self.market_filter_confirm_days:
+                self._market_state_healthy = (target == 'healthy')
+                self._market_pending_flip = None
+                self._market_pending_days = 0
+        else:
+            self._market_pending_flip = None
+            self._market_pending_days = 0
+
+        return 1.0 if self._market_state_healthy else self.market_filter_defensive_weight
 
     def execute(self, context: ExecutionContext) -> Portfolio:
         if self._eligible_tickers is None:
@@ -176,12 +246,16 @@ class MomentumStrategy(Strategy):
                 for t, h in list(self._holdings.items())[:10]:
                     print(f"  {t}: mom={h['momentum']*100:.1f}%")
 
+        exposure = self._market_exposure(context)
+
         positions = {}
         invested = 0.0
-        for ticker, holding in self._holdings.items():
-            price = context.get_price(ticker)
-            if price and holding['shares'] > 0:
-                positions[ticker] = Position(ticker=ticker, shares=float(holding['shares']), avg_cost=holding['entry_price'])
-                invested += holding['shares'] * price
+        if exposure > 0:
+            for ticker, holding in self._holdings.items():
+                price = context.get_price(ticker)
+                if price and holding['shares'] > 0:
+                    target_shares = holding['shares'] * exposure
+                    positions[ticker] = Position(ticker=ticker, shares=target_shares, avg_cost=holding['entry_price'])
+                    invested += target_shares * price
 
         return Portfolio(cash=total_value - invested, positions=positions)
