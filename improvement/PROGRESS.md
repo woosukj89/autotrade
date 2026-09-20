@@ -62,6 +62,26 @@ headline CAGR/MaxDD metrics.
   genuine, unfixable structural problem with reactive risk management on
   this strategy. Re-testing now, in progress.
 
+**Re-validated results, tax bug fixed, full 20yr daily unless noted:**
+
+| Strategy | Before fix | After fix | Verdict |
+|---|---|---|---|
+| Pure momentum (no overlay) | 25.4% / 58.2% | 25.4% / 58.2% | unchanged, still the CAGR-clearing baseline |
+| PitHighBetaOnly | 16.4% / 58.1% | 16.3% / 58.7% | unchanged, lookahead-bias finding still holds |
+| ATR stop (mult=5), 5yr window | 11.5% / 51.9% | 21.0% / 33.5% | dramatic correction, now near-neutral vs baseline |
+| Market filter (2%/5d), 5yr window | -1.6% / 92.9% | 24.5% / 33.8% | dramatic correction, ~matches baseline on this window |
+| **Market filter (2%/5d), full 20yr** | -1.6% / 92.9% | **23.1% / 33.9%** | **real, meaningful MaxDD reduction - closest result to target all session** |
+
+**The market-filtered momentum result is the standout finding of this
+correction: 23.1% CAGR / 33.9% MaxDD.** Cuts MaxDD by 24 points versus
+the no-filter baseline (58.2%) for a cost of only 2.3 points of CAGR -
+2.1pp short of the CAGR target, 3.9pp over the MaxDD target. This
+confirms Iteration 25-27's "reactive risk-reduction fundamentally
+doesn't work due to transaction costs" conclusion was **substantially
+wrong** - driven by this tax bug, not a genuine structural limit. Now
+testing nearby parameter variations to see if this can be pushed across
+both targets simultaneously.
+
 Artifacts: `backtest.py` (tax fix, commit `d1175b8`).
 
 ---
