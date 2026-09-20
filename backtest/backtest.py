@@ -648,6 +648,7 @@ class Backtest:
         self._current_date: Optional[datetime] = None
         self._annual_realized_gains: dict[int, float] = {}
         self._total_tax_paid: float = 0.0
+        self._tax_settled_years: set = set()
         self._total_slippage_cost: float = 0.0
         self._total_regulatory_fees: float = 0.0
 
@@ -956,6 +957,7 @@ class Backtest:
         self._price_cache = dict(preloaded_price_cache) if preloaded_price_cache else {}
         self._annual_realized_gains = {}
         self._total_tax_paid = 0.0
+        self._tax_settled_years = set()
         self._total_slippage_cost = 0.0
         self._total_regulatory_fees = 0.0
 
@@ -992,14 +994,26 @@ class Backtest:
             trades = self._execute_trades(portfolio, desired, buffer_pricing, slippage_bps, regulatory_fees)
             result.trades.extend(trades)
 
-            # Year-end tax deduction on net realized gains (December snapshot)
+            # Year-end tax deduction on net realized gains (December snapshot).
+            # BUG FIX: this used to fire on every loop iteration with
+            # month==12, which is fine at monthly cadence (one December
+            # iteration) but at daily cadence re-deducted the SAME full
+            # tax bill on every one of December's ~21 trading days (a
+            # ~21x overcharge, since _annual_realized_gains was never
+            # cleared). Discovered via a GEM strategy backtest showing a
+            # perfectly linear ~$5,660/day cash drain for 6 straight days
+            # in December 2011 with no positions held - not a market
+            # move, a repeated tax deduction. Gated to fire exactly once
+            # per year now, on the first December date encountered.
             if self.tax_rate > 0 and self._current_date.month == 12:
                 year = self._current_date.year
-                net_gains = self._annual_realized_gains.get(year, 0.0)
-                tax_owed = max(0.0, net_gains) * self.tax_rate
-                if tax_owed > 0:
-                    portfolio.cash = max(0.0, portfolio.cash - tax_owed)
-                    self._total_tax_paid += tax_owed
+                if year not in self._tax_settled_years:
+                    net_gains = self._annual_realized_gains.get(year, 0.0)
+                    tax_owed = max(0.0, net_gains) * self.tax_rate
+                    if tax_owed > 0:
+                        portfolio.cash = max(0.0, portfolio.cash - tax_owed)
+                        self._total_tax_paid += tax_owed
+                    self._tax_settled_years.add(year)
 
             pos_value = self._positions_value(portfolio)
             result.snapshots.append(PortfolioSnapshot(
