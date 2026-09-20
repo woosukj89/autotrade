@@ -1,5 +1,71 @@
 # Progress Log
 
+## Iteration 29 (CRITICAL BUG FOUND AND FIXED) - every daily-cadence tax figure since Iteration 22 was wrong, degree varies by strategy
+
+**A severe bug was found and fixed in `backtest.py`'s tax modeling,
+affecting every daily-cadence backtest with `tax_rate>0` run this
+session (Iterations 22-28).** The year-end tax deduction was gated only
+on `self._current_date.month == 12` - true for exactly one loop
+iteration at monthly cadence (harmless, unaffects Iterations 1-21), but
+true for ~21 separate iterations (one per December trading day) at daily
+cadence. `_annual_realized_gains` was never cleared after paying, so
+every one of those ~21 December days recomputed and re-deducted the
+SAME full year's tax bill again - a ~21x overcharge, repeated every year
+of every 20-year daily-cadence backtest.
+
+**Found via GEM strategy** (`gem_strategy.py`, this iteration's other
+new lever - see below): a diagnostic of its suspicious 87.6% MaxDD
+showed a *perfectly linear* ~$5,660/day cash drain for 6 straight days
+in December 2011 with zero positions held (`positions=None`) - not a
+market move (real drawdowns are never perfectly linear), a repeated
+fixed-dollar deduction. Traced to the tax code, confirmed, and fixed:
+gated the deduction to fire exactly once per year via a
+`_tax_settled_years` set, regardless of execution cadence.
+
+**Impact is strategy-dependent, not uniform - verified directly, not
+assumed:**
+
+| Strategy | Rebalance freq | Before fix | After fix | Changed? |
+|---|---|---|---|---|
+| GEM (2007-2012 sub-window) | ~monthly, concentrated single-asset | -4.4%/87.6% MaxDD (full 20yr) | 3.9%/22.6% MaxDD (same sub-window) | YES, dramatically |
+| PitHighBetaOnly (no timing) | every 90 days | 16.4%/58.1% | 16.3%/58.7% | No, within noise |
+| Pure momentum (no overlay) | every 30 days | 25.4%/58.2% | 25.4%/58.2% (tax: $58.0M -> $2.46M) | CAGR/MaxDD no, tax dollar figure yes |
+
+**Why the same bug hit strategies so differently**: the bug's damage is
+a REPEATED FIXED-DOLLAR deduction each December day - its effect on
+CAGR/MaxDD depends on how large that deduction is RELATIVE to the
+account's size at the time. GEM's account was often small and sitting
+entirely in cash (no other activity happening to dwarf the repeated
+hit), so the same kind of deduction was a large percentage of the
+account and showed up as a dramatic, visible collapse. Momentum's
+account, by contrast, is large and actively compounding through a
+20-year window - the same-shaped bug added up to a much bigger absolute
+dollar amount ($55M+ of erroneous tax) but was a smaller percentage
+of a much bigger, faster-growing number, so it barely moved the
+headline CAGR/MaxDD metrics.
+
+**What this means for prior iterations**:
+- **Iteration 22's lookahead-bias finding (PitHighBetaOnly, 16.4% CAGR
+  vs the old biased 26.7-27.0%) still holds** - verified directly above,
+  this strategy was barely affected by the bug.
+- **Iteration 25's headline momentum result (25.4% CAGR / 58.2% MaxDD, no
+  overlay) still holds** - verified directly above, also barely affected.
+- **Iterations 25-27's "every MaxDD-reduction mechanism fails
+  catastrophically" conclusion is now IN QUESTION and being
+  re-validated.** Several of those tests showed near-total account
+  wipeouts (stop-losses down to -100% CAGR/100% MaxDD, market filters to
+  -1.6%/92.9%, vol-targeting to -69%/99.9%) - exactly the "small,
+  depleted account, repeated fixed-dollar tax hit" pattern that
+  devastated GEM. It's plausible some or most of those catastrophic
+  failures were this bug amplifying already-elevated (but not
+  necessarily fatal) transaction costs into total wipeouts, not a
+  genuine, unfixable structural problem with reactive risk management on
+  this strategy. Re-testing now, in progress.
+
+Artifacts: `backtest.py` (tax fix, commit `d1175b8`).
+
+---
+
 ## Iteration 27 (four more MaxDD-reduction families tried, all fail) - a well-tested conclusion, not a gap in effort
 
 Per explicit direction to keep exploring and draw on known techniques
