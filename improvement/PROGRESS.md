@@ -99,19 +99,35 @@ from insufficient depth once triggered - no amount of retuning THIS lever
 closes that gap. Layering the ATR stop on top actively hurts (redundant/
 conflicting trades from two mechanisms acting on the same positions).
 
-**Honest conclusion: 23.1% CAGR / 33.9% MaxDD, market-filtered momentum,
-is the best fully-validated result of the entire session** (bug-fixed,
-daily cadence matching the live cron, point-in-time-clean by
+**Fourth lever tried: diversification combined with the market filter**
+(untested combination - Iteration 27's diversification test had no
+market filter at all). Full 20yr daily, tax bug fixed:
+
+| Variant | CAGR | MaxDD |
+|---|---|---|
+| n=10 + filter (base, best) | 23.1% | 33.9% |
+| n=15 + filter | 18.1% | 34.1% |
+| n=20 + filter | 17.8% | 32.2% |
+
+Same pattern as Iteration 27's filter-less diversification test: MaxDD
+barely moves (32-34% across a 2x range in position count) while CAGR
+drops substantially (23.1%->17.8% at n=20) - confirms again that the
+risk here is systematic (correlated names moving together in a real
+crash), not idiosyncratic, and adding the market filter doesn't change
+that conclusion. n=20 shaves ~1.7pp off MaxDD for a 5.3pp CAGR cost - a
+poor trade given CAGR is already the tighter constraint.
+
+**Honest conclusion: 23.1% CAGR / 33.9% MaxDD, market-filtered momentum
+at n=10, is the best fully-validated result of the entire session**
+(bug-fixed, daily cadence matching the live cron, point-in-time-clean by
 construction since momentum needs no fundamentals data, real slippage +
-regulatory fees, no options). 2.1pp short on CAGR, 3.9pp over on MaxDD -
-close, genuinely validated progress, not yet a confirmed pass. Given
-three structurally different tuning attempts on this specific mechanism
-converged to the same plateau, further improvement likely needs a
-different lever again (not more tuning of this one) - candidates not yet
-tried post-fix: wider diversification specifically WITH the market
-filter (untested combination - the n=20/30/40 diversification test in
-Iteration 27 had no market filter at all), or accepting this as the
-practical ceiling for this strategy family and revisiting the targets.
+regulatory fees, no options). 2.1pp short on CAGR, 3.9pp over on MaxDD.
+**Four structurally different levers - deeper de-risking, faster
+reaction, a complementary stop-loss, and diversification - have now all
+failed to beat this base config.** This is a well-tested, converged
+finding, not a gap in effort: the ~33-34% MaxDD area looks like a
+genuine practical floor for this strategy family (momentum stock
+selection + broad-market trend filter) on this 20-year window.
 
 Artifacts: `backtest.py` (tax fix, commit `d1175b8`).
 
