@@ -129,6 +129,23 @@ finding, not a gap in effort: the ~33-34% MaxDD area looks like a
 genuine practical floor for this strategy family (momentum stock
 selection + broad-market trend filter) on this 20-year window.
 
+**MacroMom (live strategy) re-verified with the fix**: 14.2% CAGR / 58.0%
+MaxDD / 0.50 Sharpe - essentially unchanged from the pre-fix number
+(14.7%/55.6%), same as PitHighBetaOnly - confirms MacroMom's rebalance
+pattern wasn't materially exposed to the bug either. The earlier
+Iteration 23 finding stands: the live strategy is not close to target
+and is beaten on both axes by the best validated result below.
+
+**Final summary, best fully-validated result vs. the live strategy,
+same honest methodology (point-in-time-clean, daily cadence, real
+slippage+fees+tax, tax bug fixed):**
+
+| | Live MacroMom | Best validated (market-filtered momentum) |
+|---|---|---|
+| CAGR | 14.2% | 23.1% |
+| MaxDD | 58.0% | 33.9% |
+| Sharpe | 0.50 | 0.79 |
+
 Artifacts: `backtest.py` (tax fix, commit `d1175b8`).
 
 ---
