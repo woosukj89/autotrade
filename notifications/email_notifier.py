@@ -63,6 +63,13 @@ class RebalanceReport:
     session_failed: bool = False  # True if Robinhood session was unavailable
     previous_portfolio_value: Optional[float] = None  # Last run's total portfolio value
 
+    # Multi-strategy support (added for the momentum strategy live deployment)
+    strategy_type: str = "regime_adaptive"  # "regime_adaptive" | "momentum" - drives conditional rendering
+    macro_metrics: Optional[Dict[str, float]] = None  # raw VIX/credit-spread/breadth/yield-curve snapshot, strategy-agnostic informational context
+    bear_magnitude_pct: Optional[float] = None  # regime_adaptive only - estimated bear magnitude if one develops
+    time_to_correction: Optional[str] = None  # regime_adaptive only - estimated lead time to a correction
+    momentum_summary: Optional[Dict] = None  # momentum only: {exposure, market_healthy, holdings: [...], top_candidates: [...], days_since_rebalance}
+
 
 class EmailNotifier:
     """
@@ -370,6 +377,162 @@ class EmailNotifier:
             </table>
             """
 
+        # Build shared "Macro Context" panel - raw, undebatable numbers only
+        # (never a second independently-computed bear score - see
+        # data/regime.py / the live-deployment plan for why). Shown for
+        # either strategy type whenever macro_metrics was successfully
+        # fetched; silently omitted on fetch failure since this is
+        # informational-only and must never block a report.
+        macro_context_html = ""
+        if report.macro_metrics:
+            mm = report.macro_metrics
+            def _fmt(key, suffix="", decimals=1):
+                v = mm.get(key)
+                return f"{v:.{decimals}f}{suffix}" if v is not None else "N/A"
+            magnitude_row = ""
+            if report.bear_magnitude_pct is not None or report.time_to_correction is not None:
+                mag_str = f"{report.bear_magnitude_pct:.0f}%" if report.bear_magnitude_pct is not None else "N/A"
+                ttc_str = report.time_to_correction or "N/A"
+                magnitude_row = f"""
+                    <tr>
+                        <td style="padding: 4px 8px; font-size: 13px; color: #666;">Est. Bear Magnitude / Time to Correction</td>
+                        <td style="padding: 4px 8px; text-align: right; font-size: 13px;">{mag_str} / {ttc_str}</td>
+                    </tr>
+                """
+            macro_context_html = f"""
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="margin: 0 0 10px 0; color: #333;">Macro Context</h3>
+                <table style="width: 100%;">
+                    <tr>
+                        <td style="padding: 4px 8px; font-size: 13px; color: #666;">VIX / VIX3M</td>
+                        <td style="padding: 4px 8px; text-align: right; font-size: 13px;">{_fmt('vix')} / {_fmt('vix_3m')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 4px 8px; font-size: 13px; color: #666;">Credit Spread (HY-IG OAS)</td>
+                        <td style="padding: 4px 8px; text-align: right; font-size: 13px;">{_fmt('credit_spread', '%', 2)}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 4px 8px; font-size: 13px; color: #666;">Market Breadth (% above 200-DMA)</td>
+                        <td style="padding: 4px 8px; text-align: right; font-size: 13px;">{_fmt('pct_above_200dma', '%')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 4px 8px; font-size: 13px; color: #666;">10Y-3M Yield Spread</td>
+                        <td style="padding: 4px 8px; text-align: right; font-size: 13px;">{_fmt('yield_curve_10y3m', '%', 2)}</td>
+                    </tr>
+                    {magnitude_row}
+                </table>
+                <p style="font-size: 11px; color: #999; margin: 8px 0 0 0;">Informational context only - not necessarily an input to this strategy's own signal.</p>
+            </div>
+            """
+
+        # Build the regime-status block: RegimeAdaptiveStrategy's bear-score
+        # panel, or MomentumStrategy's market-filter/holdings panel - the
+        # two strategies have no shared signal representation, so this is
+        # a genuine either/or rather than a shared template with optional
+        # fields.
+        if report.strategy_type == "momentum" and report.momentum_summary:
+            ms = report.momentum_summary
+            exposure_pct = ms.get('exposure', 1.0) * 100
+            filter_label = "HEALTHY" if ms.get('market_healthy', True) else "DEFENSIVE"
+            filter_color = "#28a745" if ms.get('market_healthy', True) else "#dc3545"
+            days_since = ms.get('days_since_rebalance')
+            rebalance_days = ms.get('rebalance_days')
+            cadence_str = (f"{days_since}/{rebalance_days} days since last rebalance"
+                            if days_since is not None and rebalance_days else "N/A")
+
+            holdings_rows = ""
+            for h in ms.get('holdings', []):
+                holdings_rows += f"""
+                <tr>
+                    <td style="padding: 6px 8px; font-size: 13px;"><strong>{h.get('ticker')}</strong></td>
+                    <td style="padding: 6px 8px; text-align: right; font-size: 13px;">{h.get('momentum', 0)*100:.1f}%</td>
+                    <td style="padding: 6px 8px; text-align: right; font-size: 13px;">{h.get('weight', 0)*100:.1f}%</td>
+                </tr>
+                """
+            candidates_rows = ""
+            for c in ms.get('top_candidates', [])[:10]:
+                if c.get('selected'):
+                    continue
+                candidates_rows += f"""
+                <tr>
+                    <td style="padding: 4px 8px; font-size: 12px; color: #666;">{c.get('ticker')}</td>
+                    <td style="padding: 4px 8px; text-align: right; font-size: 12px; color: #666;">{c.get('momentum', 0)*100:.1f}%</td>
+                </tr>
+                """
+            candidates_html = f"""
+            <h4 style="margin: 12px 0 6px 0; color: #555; font-size: 13px;">Top Candidates Not Selected</h4>
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                {candidates_rows or '<tr><td style="padding: 4px 8px; color: #999;">None</td></tr>'}
+            </table>
+            """ if candidates_rows else ""
+
+            regime_status_html = f"""
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="margin: 0 0 10px 0; color: #333;">Momentum Signals</h3>
+                <table style="width: 100%;">
+                    <tr>
+                        <td style="padding: 5px 0;"><strong>Market Filter:</strong></td>
+                        <td style="padding: 5px 0;">
+                            <span style="color: {filter_color}; font-weight: bold;">{filter_label}</span>
+                            &mdash; {exposure_pct:.0f}% exposure
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;"><strong>Rebalance Cadence:</strong></td>
+                        <td style="padding: 5px 0;">{cadence_str}</td>
+                    </tr>
+                </table>
+                <h4 style="margin: 12px 0 6px 0; color: #555; font-size: 13px;">Current Holdings (by momentum)</h4>
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <thead>
+                        <tr style="background: #e9ecef;">
+                            <th style="padding: 6px 8px; text-align: left; font-size: 12px; color: #666;">Ticker</th>
+                            <th style="padding: 6px 8px; text-align: right; font-size: 12px; color: #666;">12-1mo Momentum</th>
+                            <th style="padding: 6px 8px; text-align: right; font-size: 12px; color: #666;">Weight</th>
+                        </tr>
+                    </thead>
+                    <tbody>{holdings_rows}</tbody>
+                </table>
+                {candidates_html}
+            </div>
+            """
+        else:
+            regime_status_html = f"""
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="margin: 0 0 10px 0; color: #333;">Market Regime</h3>
+                <table style="width: 100%;">
+                    <tr>
+                        <td style="padding: 5px 0;">
+                            <strong>Bear Score:</strong>
+                        </td>
+                        <td style="padding: 5px 0;">
+                            <span style="color: {risk_color}; font-weight: bold;">{report.bear_score:.1f} / 100</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;">
+                            <strong>Risk Level:</strong>
+                        </td>
+                        <td style="padding: 5px 0;">
+                            <span style="color: {risk_color}; font-weight: bold;">
+                                {report.risk_level}
+                            </span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;">
+                            <strong>Allocation:</strong>
+                        </td>
+                        <td style="padding: 5px 0;">
+                            {report.allocation_aggressive*100:.0f}% Aggressive /
+                            {report.allocation_defensive*100:.0f}% Defensive
+                        </td>
+                    </tr>
+                </table>
+                {factor_table_html}
+            </div>
+            """
+
         # Build portfolio delta HTML
         if report.previous_portfolio_value and report.previous_portfolio_value > 0 and not report.session_failed:
             delta = report.portfolio_value - report.previous_portfolio_value
@@ -454,40 +617,9 @@ class EmailNotifier:
 
             {regime_change_html}
 
-            <!-- Regime Status -->
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                <h3 style="margin: 0 0 10px 0; color: #333;">Market Regime</h3>
-                <table style="width: 100%;">
-                    <tr>
-                        <td style="padding: 5px 0;">
-                            <strong>Bear Score:</strong>
-                        </td>
-                        <td style="padding: 5px 0;">
-                            <span style="color: {risk_color}; font-weight: bold;">{report.bear_score:.1f} / 100</span>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 5px 0;">
-                            <strong>Risk Level:</strong>
-                        </td>
-                        <td style="padding: 5px 0;">
-                            <span style="color: {risk_color}; font-weight: bold;">
-                                {report.risk_level}
-                            </span>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 5px 0;">
-                            <strong>Allocation:</strong>
-                        </td>
-                        <td style="padding: 5px 0;">
-                            {report.allocation_aggressive*100:.0f}% Aggressive /
-                            {report.allocation_defensive*100:.0f}% Defensive
-                        </td>
-                    </tr>
-                </table>
-                {factor_table_html}
-            </div>
+            {macro_context_html}
+
+            {regime_status_html}
 
             <!-- Reason -->
             <div style="background: #e7f3ff; padding: 15px; border-radius: 8px; margin: 20px 0;">
@@ -501,7 +633,7 @@ class EmailNotifier:
 
             <hr style="border: 1px solid #eee; margin-top: 30px;">
             <p style="font-size: 12px; color: #999;">
-                This is an automated report from AutoTrade Regime Adaptive Strategy.<br>
+                This is an automated report from AutoTrade &mdash; {report.strategy_name}.<br>
                 Generated at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             </p>
 
