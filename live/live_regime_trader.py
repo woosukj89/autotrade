@@ -74,6 +74,7 @@ from notifications import (
 )
 from strategies.strategy import Portfolio, Position, ExecutionContext
 from live.execution_context import DryRunExecutionContext, LiveExecutionContext
+from live.macro_snapshot import fetch_raw_macro_metrics, format_macro_text_block
 
 # Suppress warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
@@ -554,6 +555,9 @@ class LiveRegimeTrader:
         self._allocation: Tuple[float, float] = (1.0, 0.0)
         self._factor_scores: dict = {}
         self._session_failed: bool = False
+        self._bear_magnitude_pct: Optional[float] = None
+        self._time_to_correction: Optional[str] = None
+        self._macro_metrics: Optional[dict] = None
 
     def _get_strategy(self):
         """Lazy-load the strategy to avoid circular import issues."""
@@ -705,9 +709,25 @@ class LiveRegimeTrader:
         self._allocation = strategy._current_allocation
 
         # Get risk level
-        from data.regime import get_risk_recommendation
+        from data.regime import get_risk_recommendation, estimate_bear_magnitude, estimate_time_to_correction
         recommendation = get_risk_recommendation(self._bear_score)
         self._risk_level = recommendation['level']
+
+        # Report-only bear magnitude / time-to-correction, reusing the
+        # strategy's own already-computed factor scores and score history
+        # rather than a second independently-computed bear score.
+        if self._factor_scores:
+            self._bear_magnitude_pct = estimate_bear_magnitude(self._factor_scores)
+            self._time_to_correction = estimate_time_to_correction(
+                self._bear_score, score_history=strategy._bear_score_history
+            )
+        else:
+            self._bear_magnitude_pct = None
+            self._time_to_correction = None
+
+        # Macro context snapshot for the report email - informational
+        # only, fetched independently of the strategy's own regime inputs.
+        self._macro_metrics = fetch_raw_macro_metrics(fred_api_key=os.environ.get('FRED_API_KEY'))
 
         print(f"\n[LiveTrader] Strategy Result:")
         print(f"  Bear Score: {self._bear_score:.1f}")
@@ -955,6 +975,10 @@ class LiveRegimeTrader:
             factor_scores=self._factor_scores if self._factor_scores else None,
             session_failed=session_failed,
             previous_portfolio_value=previous_portfolio_value,
+            strategy_type="regime_adaptive",
+            macro_metrics=self._macro_metrics,
+            bear_magnitude_pct=self._bear_magnitude_pct,
+            time_to_correction=self._time_to_correction,
         )
 
         return report
@@ -1016,6 +1040,12 @@ class LiveRegimeTrader:
         lines.append("")
         lines.append(f"Reason: {report.rebalance_reason}")
         lines.append("")
+
+        lines.extend(format_macro_text_block(
+            report.macro_metrics,
+            bear_magnitude_pct=report.bear_magnitude_pct,
+            time_to_correction=report.time_to_correction,
+        ))
 
         # Manual Trading Guide Section
         lines.append("-" * 70)
