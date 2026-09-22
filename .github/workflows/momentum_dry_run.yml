@@ -1,0 +1,54 @@
+name: Momentum Strategy Dry Run
+
+# Validation-only workflow: runs the new MomentumStrategy live driver in
+# --dry-run mode (MockConnector, no real trades, no Robinhood session
+# needed) alongside the still-live daily_trade.yml (regime trader).
+#
+# Purpose: confirm live/momentum_trader_state.json round-trips correctly
+# across independent GitHub Actions runs before cutover - specifically
+# that market_pending_days/holdings/last_rebalance persist rather than
+# silently resetting every run, which would permanently disable the
+# market filter. See live/live_momentum_trader.py's module docstring.
+#
+# Delete this workflow (or fold it into daily_trade.yml) once the
+# momentum strategy has been cut over to live trading.
+
+on:
+  schedule:
+    # 10:15 AM ET (15:15 UTC) on weekdays - 15 min after the live regime
+    # trader, so the two don't contend for the same runner slot.
+    - cron: '15 15 * * 1-5'
+  workflow_dispatch: # Manual trigger for testing
+
+permissions:
+  contents: write
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run momentum strategy (dry run)
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: python live/live_momentum_trader.py --dry-run --no-email --no-confirm --starting-cash 50000 --state-file live/momentum_trader_state.json
+
+      - name: Commit updated momentum state file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add live/momentum_trader_state.json
+          git diff --cached --quiet || git commit -m "Update momentum dry-run state [skip ci]"
+          git push
