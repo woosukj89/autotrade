@@ -7,6 +7,7 @@ trading platforms/brokers.
 
 Available Connectors:
     - RobinhoodConnector: Robinhood trading platform
+    - TossConnector: Toss Securities Open API (UNVALIDATED skeleton — see connectors/toss.py)
 
 Usage:
     from connectors import RobinhoodConnector, create_robinhood_connector
@@ -42,6 +43,11 @@ from .robinhood import (
     create_robinhood_connector,
 )
 
+from .toss import (
+    TossConnector,
+    create_toss_connector,
+)
+
 __all__ = [
     # Base classes
     'ExchangeConnector',
@@ -55,4 +61,7 @@ __all__ = [
     # Robinhood
     'RobinhoodConnector',
     'create_robinhood_connector',
+    # Toss Securities (unvalidated skeleton)
+    'TossConnector',
+    'create_toss_connector',
 ]
