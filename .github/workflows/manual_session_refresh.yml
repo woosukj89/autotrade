@@ -1,17 +1,15 @@
-name: Refresh Robinhood Session
+name: Manual Session Refresh (Telegram-triggered)
 
-# Runs every day at 8:00 AM ET (13:00 UTC), including weekends.
-# This is intentionally 2 hours BEFORE the daily trade job (10:00 AM ET)
-# so the trade job always starts with a freshly-refreshed session.
-#
-# The session is stored as a base64-encoded pickle in the ROBINHOOD_SESSION
-# secret. robin_stocks refreshes the OAuth token on each login, so running
-# this script keeps the session alive and prevents the ~7-day expiry.
+# Fired by a repository_dispatch event of type "manual-session-refresh",
+# sent by scripts/telegram_listener.py when the user replies /refresh
+# (optionally with a manual MFA/SMS code) to the Telegram bot. This is
+# the "one-tap re-trigger" half of the re-authentication assistant -
+# see scripts/refresh_session.py and scripts/telegram_listener.py for
+# the full design rationale.
 
 on:
-  schedule:
-    - cron: '0 13 * * *'   # 08:00 ET every day (including Sat/Sun)
-  workflow_dispatch:         # Allow manual trigger
+  repository_dispatch:
+    types: [manual-session-refresh]
 
 permissions:
   contents: read
@@ -40,18 +38,17 @@ jobs:
           if [ -n "$ROBINHOOD_SESSION" ]; then
             mkdir -p .session
             echo "$ROBINHOOD_SESSION" | base64 -d > .session/robinhood.pickle
-            echo "Session pickle restored ($(stat -c%s .session/robinhood.pickle) bytes)."
+            echo "Session pickle restored."
           else
-            echo "ERROR: ROBINHOOD_SESSION secret is not set."
-            echo "Run 'python scripts/bootstrap_session.py' locally to create one."
-            exit 1
+            echo "No existing session pickle - will attempt a fresh login."
           fi
 
-      - name: Refresh session
+      - name: Refresh session (with relayed MFA code if provided)
         env:
           ROBINHOOD_USERNAME: ${{ secrets.ROBINHOOD_USERNAME }}
           ROBINHOOD_PASSWORD: ${{ secrets.ROBINHOOD_PASSWORD }}
           ROBINHOOD_PICKLE_PATH: .session
+          ROBINHOOD_MFA_CODE: ${{ github.event.client_payload.mfa_code }}
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
@@ -67,5 +64,5 @@ jobs:
             gh secret set ROBINHOOD_SESSION --body "$NEW_SESSION"
             echo "ROBINHOOD_SESSION secret updated."
           else
-            echo "WARNING: No pickle file found — secret not updated."
+            echo "WARNING: No pickle file found - secret not updated."
           fi

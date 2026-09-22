@@ -1,0 +1,53 @@
+name: Telegram Listener
+
+# Lightweight, no-always-on-server polling of the Telegram Bot API for
+# /refresh commands, run on a schedule. Runs every 5 minutes during
+# typical waking hours (13:00-23:00 UTC = ~5am-3pm PT / ~9am-7pm ET,
+# adjust to taste) rather than 24/7, since a session-refresh problem
+# only matters when the user can actually act on it anyway - and this
+# keeps GitHub Actions minutes usage sane. Use workflow_dispatch to
+# poll on demand outside that window.
+
+on:
+  schedule:
+    - cron: '*/5 13-23 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install requests python-dotenv
+
+      - name: Poll Telegram for commands
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: python scripts/telegram_listener.py
+
+      - name: Commit updated offset
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -f live/telegram_offset.json ]; then
+            git add live/telegram_offset.json
+            git diff --cached --quiet || git commit -m "Update telegram listener offset [skip ci]"
+            git push
+          else
+            echo "No offset file written (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID likely not set yet) - nothing to commit."
+          fi

@@ -15,6 +15,7 @@ import json
 import base64
 import pickle
 import time
+import argparse
 from datetime import datetime
 from typing import Optional
 
@@ -27,6 +28,8 @@ try:
 except ImportError:
     pass
 
+import requests
+
 from notifications import create_email_notifier
 
 # Warn if the session pickle was this many days old before refresh.
@@ -35,6 +38,14 @@ from notifications import create_email_notifier
 WARN_AGE_DAYS = 4
 
 DEFAULT_EMAIL = os.environ.get('REPORT_EMAIL', 'joshuaJang89@gmail.com')
+
+# ntfy.sh push notification - reaches the phone within seconds, unlike
+# email which can sit unread in an inbox. No account needed: any POST
+# to https://ntfy.sh/<topic> is broadcast to whoever is subscribed to
+# that topic in the ntfy app. NTFY_TOPIC should be a long, hard-to-guess
+# string (topics are public-by-obscurity, not access-controlled) - set
+# once, subscribe to it once in the ntfy app, never needs touching again.
+NTFY_TOPIC = os.environ.get('NTFY_TOPIC')
 
 
 # ── Session helpers ────────────────────────────────────────────────
@@ -86,6 +97,27 @@ def get_token_expiry(pickle_dir: str) -> Optional[datetime]:
         return None
 
 
+# ── Push notification helper ───────────────────────────────────────
+
+def send_push_notification(title: str, message: str, priority: str = "default", tags: str = "") -> None:
+    """Best-effort ntfy.sh push, alongside (not instead of) email. Never
+    raises - a notification failure must not fail the refresh job itself.
+    """
+    if not NTFY_TOPIC:
+        print("[refresh_session] NTFY_TOPIC not set — skipping push notification.")
+        return
+    try:
+        requests.post(
+            f"https://ntfy.sh/{NTFY_TOPIC}",
+            data=message.encode('utf-8'),
+            headers={"Title": title, "Priority": priority, "Tags": tags},
+            timeout=10,
+        )
+        print("[refresh_session] Push notification sent.")
+    except Exception as e:
+        print(f"[refresh_session] Push notification failed (non-fatal): {e}")
+
+
 # ── Email helpers ──────────────────────────────────────────────────
 
 def send_failure_email(error_hint: str) -> None:
@@ -126,6 +158,17 @@ python scripts/bootstrap_session.py</pre>
 
     notifier.send_email(subject, body_html)
     print(f"[refresh_session] Failure alert email sent to {DEFAULT_EMAIL}")
+
+    send_push_notification(
+        title="Robinhood session refresh FAILED",
+        message=(
+            f"{error_hint}\n\n"
+            "Open Robinhood in your phone app and approve/complete login if "
+            "prompted, then send /refresh to the Telegram bot to retry."
+        ),
+        priority="urgent",
+        tags="rotating_light",
+    )
 
 
 def send_expiry_warning(age_days: float, expiry: Optional[datetime]) -> None:
@@ -182,13 +225,36 @@ python scripts/bootstrap_session.py</pre>
     notifier.send_email(subject, body_html)
     print(f"[refresh_session] Warning email sent to {DEFAULT_EMAIL}")
 
+    send_push_notification(
+        title="Robinhood session was close to expiring",
+        message=(
+            f"Was {age_days:.1f}d old before today's refresh (refreshed OK just now, "
+            f"new expiry {expiry_str}). The auto-refresh job has been failing silently "
+            "for several days - worth checking the GitHub Actions logs."
+        ),
+        priority="high",
+        tags="warning",
+    )
+
 
 # ── Main ───────────────────────────────────────────────────────────
 
 def main():
+    parser = argparse.ArgumentParser(description="Refresh the Robinhood session")
+    parser.add_argument(
+        '--mfa-code', type=str, default=None,
+        help="Manually-supplied MFA/SMS code (e.g. relayed from the Telegram "
+             "bot for a repository_dispatch-triggered retry). Falls back to "
+             "ROBINHOOD_MFA_CODE env var, then to TOTP auto-generation."
+    )
+    args = parser.parse_args()
+    mfa_code = args.mfa_code or os.environ.get('ROBINHOOD_MFA_CODE')
+
     print("=" * 50)
     print("ROBINHOOD SESSION REFRESH")
     print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    if mfa_code:
+        print("Using manually-supplied MFA code.")
     print("=" * 50)
 
     pickle_dir = os.environ.get('ROBINHOOD_PICKLE_PATH', '.session')
@@ -206,7 +272,7 @@ def main():
     print("\nConnecting to Robinhood...")
     try:
         from connectors import create_robinhood_connector
-        connector = create_robinhood_connector()
+        connector = create_robinhood_connector(mfa_code=mfa_code)
     except Exception as e:
         print(f"ERROR: Could not create connector: {e}")
         send_failure_email(str(e))
@@ -214,7 +280,11 @@ def main():
 
     if not connector.connect():
         print("ERROR: Robinhood connection failed.")
-        send_failure_email("connector.connect() returned False — check credentials or MFA challenge")
+        hint = "connector.connect() returned False — check credentials or MFA challenge"
+        if not mfa_code:
+            hint += (". If this is an MFA/SMS challenge, reply to the Telegram bot with "
+                     "/refresh <code> to retry with a manual code.")
+        send_failure_email(hint)
         sys.exit(1)
 
     print("Connected — session token refreshed.")

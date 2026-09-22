@@ -580,6 +580,7 @@ def create_robinhood_connector(
     password: str = None,
     totp_secret: str = None,
     pickle_path: str = None,
+    mfa_code: str = None,
 ) -> RobinhoodConnector:
     """
     Factory function to create a Robinhood connector.
@@ -589,6 +590,12 @@ def create_robinhood_connector(
         - ROBINHOOD_PASSWORD
         - ROBINHOOD_TOTP_SECRET (optional, for 2FA)
         - ROBINHOOD_PICKLE_PATH (optional, directory for session pickle)
+
+    Args:
+        mfa_code: Manually-supplied MFA/SMS code, e.g. relayed from a
+            Telegram command when TOTP-based auto-generation isn't
+            available/working. Takes priority over totp_secret when set
+            (see RobinhoodConnector.connect()).
 
     Example:
         # Using environment variables
@@ -608,4 +615,5 @@ def create_robinhood_connector(
         password=password,
         totp_secret=totp_secret,
         pickle_path=pickle_path,
+        mfa_code=mfa_code,
     )
