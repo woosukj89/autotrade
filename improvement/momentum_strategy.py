@@ -45,12 +45,30 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'strategies'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'data'))
 from strategy import Strategy, Portfolio, Position, ExecutionContext
 from yahoo_data import YahooDataProvider
+from sector_map import TICKER_SECTOR
 
 
 class MomentumStrategy(Strategy):
+    # Broad, liquid ETFs added to the candidate pool when include_etf_universe
+    # is set - not a new switching mechanism (everything tried in Iteration
+    # 25-27 that added a synchronized regime-switch failed on transaction
+    # cost), just a wider, naturally less-correlated pool for the SAME
+    # already-working momentum+trend-filter+ranking process to draw from.
+    ETF_UNIVERSE = {
+        # Broad US
+        'SPY', 'QQQ', 'IWM', 'DIA', 'MDY',
+        # US sector SPDRs
+        'XLK', 'XLF', 'XLE', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'XLC', 'XLRE',
+        # International / regional
+        'EFA', 'EEM', 'VGK', 'VPL', 'EWJ', 'EWZ', 'INDA', 'FXI',
+        # Real estate (equity REITs, trades like a stock)
+        'VNQ',
+    }
+
     def __init__(
         self,
         max_positions: int = 15,
+        include_etf_universe: bool = False,
         lookback_days: int = 252,       # ~12 months
         skip_recent_days: int = 21,     # skip most recent ~1 month (12-1 momentum)
         trend_sma_days: int = 200,      # absolute-trend filter window
@@ -76,6 +94,7 @@ class MomentumStrategy(Strategy):
         vol_target_tolerance: float = 0.10,  # only re-trade when target exposure drifts more than this from what's currently implemented
     ):
         self.max_positions = max_positions
+        self.include_etf_universe = include_etf_universe
         self.lookback_days = lookback_days
         self.skip_recent_days = skip_recent_days
         self.trend_sma_days = trend_sma_days
@@ -109,10 +128,14 @@ class MomentumStrategy(Strategy):
         self._ticker_sectors: Dict[str, str] = {}
         self._holdings: Dict[str, dict] = {}
         self._last_rebalance = None
+        self._last_signals: List[dict] = []   # full ranked candidate list from the last rebalance, for reporting/observability
+        self._current_exposure: float = 1.0   # last computed exposure fraction (0..1), for reporting/observability
 
     def _load_eligible_tickers(self):
         provider = YahooDataProvider(cache_db=None)
         self._eligible_tickers = provider.get_high_beta_universe()
+        if self.include_etf_universe:
+            self._eligible_tickers = self._eligible_tickers | self.ETF_UNIVERSE
 
     def _compute_signal(self, ticker: str, context: ExecutionContext) -> Optional[dict]:
         needed = self.lookback_days + self.skip_recent_days + 5
@@ -165,6 +188,7 @@ class MomentumStrategy(Strategy):
         return {
             'ticker': ticker, 'momentum': momentum, 'above_trend': above_trend,
             'price': current_price, 'volatility': volatility, 'atr': atr,
+            'sector': TICKER_SECTOR.get(ticker, 'Unknown'),
         }
 
     def _market_exposure(self, context: ExecutionContext) -> float:
@@ -325,14 +349,30 @@ class MomentumStrategy(Strategy):
             signals.sort(key=lambda s: s['momentum'], reverse=True)
             print(f"[Momentum] {len(signals)}/{len(candidates)} candidates above trend, "
                   f"top momentum: {[round(s['momentum']*100,1) for s in signals[:5]]}")
+            self._last_signals = signals
 
             self._holdings = {}
+            # Sector cap: previously declared (max_sector_weight,
+            # sector_weights) but never actually enforced here - with as
+            # few as 10 live positions an unchecked cap is a real
+            # concentration risk (e.g. 4-6 of 10 slots landing in one
+            # correlated sector during an AI/semis-momentum-driven
+            # market), not a hypothetical one. Enforced via a static,
+            # pre-committed ticker->sector map (data/sector_map.py) -
+            # deliberately NOT a live yfinance `.info` lookup, since this
+            # strategy is specifically designed to need no live
+            # fundamentals/metadata fetch at all.
             sector_weights: Dict[str, float] = {}
             selected = []
+            approx_weight = 1.0 / self.max_positions
             for sig in signals:
                 if len(selected) >= self.max_positions:
                     break
+                sector = sig.get('sector', 'Unknown')
+                if sector_weights.get(sector, 0.0) + approx_weight > self.max_sector_weight:
+                    continue
                 selected.append(sig)
+                sector_weights[sector] = sector_weights.get(sector, 0.0) + approx_weight
 
             if self.vol_scale_weighting and selected:
                 inv_vols = [1.0 / s['volatility'] if s['volatility'] and s['volatility'] > 0 else 0.0 for s in selected]
@@ -358,6 +398,7 @@ class MomentumStrategy(Strategy):
 
         self._apply_stop_losses(context)
         exposure = self._market_exposure(context) * self._vol_target_exposure(total_value)
+        self._current_exposure = exposure
 
         positions = {}
         invested = 0.0
