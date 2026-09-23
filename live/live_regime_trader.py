@@ -73,7 +73,7 @@ from notifications import (
     create_email_notifier,
 )
 from strategies.strategy import Portfolio, Position, ExecutionContext
-from live.execution_context import DryRunExecutionContext, LiveExecutionContext
+from live.execution_context import DryRunExecutionContext, LiveExecutionContext, _normalize_yf_columns
 from live.macro_snapshot import fetch_raw_macro_metrics, format_macro_text_block
 
 # Suppress warnings
@@ -343,6 +343,7 @@ class MockConnector(ExchangeConnector):
                 warnings.simplefilter("ignore")
                 data = yf.download(ticker, period='5d', progress=False)
                 if data is not None and len(data) > 0:
+                    data = _normalize_yf_columns(data)
                     price = float(data['Close'].iloc[-1])
                     self._price_cache[ticker] = price
                     return price
@@ -384,6 +385,7 @@ class MockConnector(ExchangeConnector):
                 start = end - timedelta(days=days)
                 data = yf.download(ticker, start=start, end=end, progress=False)
                 if data is not None and len(data) > 0:
+                    data = _normalize_yf_columns(data)
                     return data.to_dict('records')
         except Exception:
             pass
@@ -771,6 +773,7 @@ class LiveRegimeTrader:
                         warnings.simplefilter("ignore")
                         data = yf.download(ticker, period='5d', progress=False)
                         if data is not None and len(data) > 0:
+                            data = _normalize_yf_columns(data)
                             quotes[ticker] = float(data['Close'].iloc[-1])
                 except Exception:
                     pass

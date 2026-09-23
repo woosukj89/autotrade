@@ -19,6 +19,26 @@ from connectors.base import ExchangeConnector
 from strategies.strategy import Portfolio
 
 
+def _normalize_yf_columns(data: pd.DataFrame) -> pd.DataFrame:
+    """yf.download() for a single ticker returns MultiIndex columns
+    (field, ticker) on some yfinance versions and plain columns on
+    others - CI installs whatever's newest since requirements.txt pins
+    only a floor (yfinance>=0.2.0), so this can silently differ from a
+    locally-cached version. Without this, data['Close'] returns a
+    single-column DataFrame instead of a Series on the MultiIndex
+    versions, and float(series.iloc[-1]) blows up with
+    "TypeError: ... not 'Series'". strategies/regime_adaptive_strategy.py
+    already works around this ad hoc with .squeeze() at each call site;
+    normalizing once here means every caller of get_historical_prices()
+    gets a consistently plain-columned DataFrame regardless of the
+    installed yfinance version's default column shape.
+    """
+    if isinstance(data.columns, pd.MultiIndex):
+        data = data.copy()
+        data.columns = data.columns.get_level_values(0)
+    return data
+
+
 class DryRunExecutionContext:
     """
     Execution context for dry-run mode.
@@ -46,6 +66,7 @@ class DryRunExecutionContext:
                 warnings.simplefilter("ignore")
                 data = yf.download(ticker, period='5d', progress=False)
                 if data is not None and len(data) > 0:
+                    data = _normalize_yf_columns(data)
                     price = float(data['Close'].iloc[-1])
                     self._price_cache[ticker] = price
                     return price
@@ -71,6 +92,7 @@ class DryRunExecutionContext:
                 data = yf.download(ticker, start=start_date, end=end_date, progress=False)
 
                 if data is not None and len(data) > 0:
+                    data = _normalize_yf_columns(data)
                     # Keep only the requested number of periods
                     data = data.tail(periods)
                     self._historical_cache[cache_key] = data
@@ -124,6 +146,7 @@ class LiveExecutionContext:
                 warnings.simplefilter("ignore")
                 data = yf.download(ticker, period='5d', progress=False)
                 if data is not None and len(data) > 0:
+                    data = _normalize_yf_columns(data)
                     price = float(data['Close'].iloc[-1])
                     self._price_cache[ticker] = price
                     return price
@@ -148,6 +171,7 @@ class LiveExecutionContext:
                 data = yf.download(ticker, start=start_date, end=end_date, progress=False)
 
                 if data is not None and len(data) > 0:
+                    data = _normalize_yf_columns(data)
                     data = data.tail(periods)
                     self._historical_cache[cache_key] = data
                     return data

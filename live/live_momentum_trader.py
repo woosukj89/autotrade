@@ -93,7 +93,7 @@ from notifications import (
     create_email_notifier,
 )
 from strategies.strategy import Portfolio, Position
-from live.execution_context import DryRunExecutionContext, LiveExecutionContext
+from live.execution_context import DryRunExecutionContext, LiveExecutionContext, _normalize_yf_columns
 from live.macro_snapshot import fetch_raw_macro_metrics
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'improvement'))
@@ -381,6 +381,7 @@ class LiveMomentumTrader:
                         warnings.simplefilter("ignore")
                         data = yf.download(ticker, period='5d', progress=False)
                         if data is not None and len(data) > 0:
+                            data = _normalize_yf_columns(data)
                             quotes[ticker] = float(data['Close'].iloc[-1])
                 except Exception:
                     pass
