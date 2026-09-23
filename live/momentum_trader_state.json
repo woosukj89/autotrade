@@ -1,0 +1,83 @@
+{
+  "last_rebalance": "2026-09-23T14:26:27.500530",
+  "holdings": {
+    "MRNA": {
+      "shares": 26,
+      "entry_price": 189.69000244140625,
+      "momentum": 4.823836454192979,
+      "peak_price": 189.69000244140625,
+      "atr": 12.15219955444336
+    },
+    "MU": {
+      "shares": 4,
+      "entry_price": 1073.3800048828125,
+      "momentum": 3.2351235018557727,
+      "peak_price": 1073.3800048828125,
+      "atr": 43.4385009765625
+    },
+    "STX": {
+      "shares": 5,
+      "entry_price": 908.0599975585938,
+      "momentum": 2.3653405255372255,
+      "peak_price": 908.0599975585938,
+      "atr": 44.439999389648435
+    },
+    "MRVL": {
+      "shares": 19,
+      "entry_price": 257.1000061035156,
+      "momentum": 2.0171305369757753,
+      "peak_price": 257.1000061035156,
+      "atr": 13.204499053955079
+    },
+    "WDC": {
+      "shares": 10,
+      "entry_price": 460.0199890136719,
+      "momentum": 2.0102669429160134,
+      "peak_price": 460.0199890136719,
+      "atr": 23.35965110573095
+    },
+    "INTC": {
+      "shares": 41,
+      "entry_price": 120.38999938964844,
+      "momentum": 1.6236526329965852,
+      "peak_price": 120.38999938964844,
+      "atr": 5.701000595092774
+    },
+    "FCX": {
+      "shares": 69,
+      "entry_price": 71.68000030517578,
+      "momentum": 0.9301795351001196,
+      "peak_price": 71.68000030517578,
+      "atr": 2.8589996337890624
+    },
+    "VLO": {
+      "shares": 13,
+      "entry_price": 382.54998779296875,
+      "momentum": 0.9212452802663791,
+      "peak_price": 382.54998779296875,
+      "atr": 13.688502502441406
+    },
+    "KMX": {
+      "shares": 90,
+      "entry_price": 55.44499969482422,
+      "momentum": 0.8579546536969995,
+      "peak_price": 55.44499969482422,
+      "atr": 1.7884994506835938
+    },
+    "MPC": {
+      "shares": 12,
+      "entry_price": 393.54998779296875,
+      "momentum": 0.8373082884786249,
+      "peak_price": 393.54998779296875,
+      "atr": 13.676496887207032
+    }
+  },
+  "market_state_healthy": true,
+  "market_pending_flip": null,
+  "market_pending_days": 0,
+  "value_history": [
+    50000.0
+  ],
+  "implemented_vol_exposure": 1.0,
+  "saved_at": "2026-09-23T14:28:09.991240"
+}
