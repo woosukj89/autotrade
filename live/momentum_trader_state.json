@@ -77,8 +77,9 @@
   "market_pending_days": 0,
   "value_history": [
     50000.0,
+    50000.0,
     50000.0
   ],
   "implemented_vol_exposure": 1.0,
-  "saved_at": "2026-09-23T19:02:19.225434"
+  "saved_at": "2026-09-24T19:06:33.472845"
 }
