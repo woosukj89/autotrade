@@ -1,15 +1,30 @@
-name: Manual Session Refresh (Telegram-triggered)
+name: Manual Session Refresh
 
-# Fired by a repository_dispatch event of type "manual-session-refresh",
-# sent by scripts/telegram_listener.py when the user replies /refresh
-# (optionally with a manual MFA/SMS code) to the Telegram bot. This is
-# the "one-tap re-trigger" half of the re-authentication assistant -
-# see scripts/refresh_session.py and scripts/telegram_listener.py for
-# the full design rationale.
+# Two ways to fire this:
+#  1. repository_dispatch (type "manual-session-refresh") - sent by the
+#     "Retry Now" action button on the ntfy.sh push notification that
+#     scripts/refresh_session.py sends on a refresh failure. Genuinely
+#     one-tap: the button fires the HTTP request straight from the
+#     phone's notification shade, no app to open.
+#  2. workflow_dispatch - manual fallback via the GitHub Actions UI or
+#     the GitHub Mobile app, with an optional mfa_code input, for cases
+#     where a typed code is needed (the ntfy button can't collect free
+#     text) or the push notification itself didn't arrive.
+#
+# This is the "one-tap re-trigger" half of the re-authentication
+# assistant - see scripts/refresh_session.py for the full design
+# rationale (originally built around a Telegram bot, replaced after
+# Telegram's SMS verification proved unreliable for a Korean number).
 
 on:
   repository_dispatch:
     types: [manual-session-refresh]
+  workflow_dispatch:
+    inputs:
+      mfa_code:
+        description: 'Manual MFA/SMS code (leave blank to use TOTP auto-generation)'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -48,10 +63,11 @@ jobs:
           ROBINHOOD_USERNAME: ${{ secrets.ROBINHOOD_USERNAME }}
           ROBINHOOD_PASSWORD: ${{ secrets.ROBINHOOD_PASSWORD }}
           ROBINHOOD_PICKLE_PATH: .session
-          ROBINHOOD_MFA_CODE: ${{ github.event.client_payload.mfa_code }}
+          ROBINHOOD_MFA_CODE: ${{ github.event.client_payload.mfa_code || github.event.inputs.mfa_code }}
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_ACTION_PAT: ${{ secrets.NTFY_ACTION_PAT }}
         run: python scripts/refresh_session.py
 
       - name: Save refreshed session to secret

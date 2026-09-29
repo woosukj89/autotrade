@@ -55,6 +55,7 @@ jobs:
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_ACTION_PAT: ${{ secrets.NTFY_ACTION_PAT }}
         run: python scripts/refresh_session.py
 
       - name: Save refreshed session to secret

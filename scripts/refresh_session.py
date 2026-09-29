@@ -47,6 +47,23 @@ DEFAULT_EMAIL = os.environ.get('REPORT_EMAIL', 'joshuaJang89@gmail.com')
 # once, subscribe to it once in the ntfy app, never needs touching again.
 NTFY_TOPIC = os.environ.get('NTFY_TOPIC')
 
+# One-tap retry: ntfy notifications can carry an action button that
+# fires an HTTP request directly from the phone when tapped - no bot,
+# no app-switch, no phone-verified account needed (replaces the earlier
+# Telegram-bot design, which was blocked by SMS delivery issues).
+# The button POSTs a repository_dispatch event straight to GitHub, so it
+# needs a token with permission to do that embedded in the notification
+# payload. IMPORTANT: this token passes through ntfy.sh's server as
+# part of the message, and is stored on-device by the ntfy app so it
+# can fire the request when tapped - so NTFY_ACTION_PAT must be a
+# dedicated fine-grained PAT scoped to ONLY this repo with ONLY
+# "Contents: Read and write" permission (what GitHub's dispatches
+# endpoint requires), never the broader GH_PAT used elsewhere in this
+# project for `gh secret set`. Treat it as a lower-trust, easily
+# rotated credential precisely because of where it travels.
+NTFY_ACTION_PAT = os.environ.get('NTFY_ACTION_PAT')
+GITHUB_REPOSITORY = os.environ.get('GITHUB_REPOSITORY')  # "owner/repo", auto-set by GitHub Actions
+
 
 # ── Session helpers ────────────────────────────────────────────────
 
@@ -99,20 +116,58 @@ def get_token_expiry(pickle_dir: str) -> Optional[datetime]:
 
 # ── Push notification helper ───────────────────────────────────────
 
-def send_push_notification(title: str, message: str, priority: str = "default", tags: str = "") -> None:
+def send_push_notification(
+    title: str,
+    message: str,
+    priority: str = "default",
+    tags: str = "",
+    with_retry_action: bool = False,
+) -> None:
     """Best-effort ntfy.sh push, alongside (not instead of) email. Never
     raises - a notification failure must not fail the refresh job itself.
+
+    with_retry_action=True adds a one-tap "Retry Now" button that fires
+    scripts/refresh_session.py again via repository_dispatch directly
+    from the notification, with no app to open. Requires NTFY_ACTION_PAT
+    and GITHUB_REPOSITORY (auto-set in Actions) - silently omits the
+    button (falls back to a plain notification) if either is missing,
+    since a notification that's short one convenience button is still
+    far better than no notification at all.
     """
     if not NTFY_TOPIC:
         print("[refresh_session] NTFY_TOPIC not set — skipping push notification.")
         return
+
+    payload = {
+        "topic": NTFY_TOPIC,
+        "title": title,
+        "message": message,
+        "priority": {"urgent": 5, "high": 4, "default": 3, "low": 2, "min": 1}.get(priority, 3),
+    }
+    if tags:
+        payload["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
+
+    if with_retry_action and NTFY_ACTION_PAT and GITHUB_REPOSITORY:
+        payload["actions"] = [{
+            "action": "http",
+            "label": "Retry Now",
+            "url": f"https://api.github.com/repos/{GITHUB_REPOSITORY}/dispatches",
+            "method": "POST",
+            "headers": {
+                "Authorization": f"Bearer {NTFY_ACTION_PAT}",
+                "Accept": "application/vnd.github+json",
+            },
+            "body": json.dumps({
+                "event_type": "manual-session-refresh",
+                "client_payload": {"mfa_code": ""},
+            }),
+            "clear": True,
+        }]
+    elif with_retry_action:
+        print("[refresh_session] NTFY_ACTION_PAT/GITHUB_REPOSITORY not set — sending plain notification without retry button.")
+
     try:
-        requests.post(
-            f"https://ntfy.sh/{NTFY_TOPIC}",
-            data=message.encode('utf-8'),
-            headers={"Title": title, "Priority": priority, "Tags": tags},
-            timeout=10,
-        )
+        requests.post("https://ntfy.sh", json=payload, timeout=10)
         print("[refresh_session] Push notification sent.")
     except Exception as e:
         print(f"[refresh_session] Push notification failed (non-fatal): {e}")
@@ -164,10 +219,11 @@ python scripts/bootstrap_session.py</pre>
         message=(
             f"{error_hint}\n\n"
             "Open Robinhood in your phone app and approve/complete login if "
-            "prompted, then send /refresh to the Telegram bot to retry."
+            "prompted, then tap Retry Now below."
         ),
         priority="urgent",
         tags="rotating_light",
+        with_retry_action=True,
     )
 
 
@@ -243,9 +299,10 @@ def main():
     parser = argparse.ArgumentParser(description="Refresh the Robinhood session")
     parser.add_argument(
         '--mfa-code', type=str, default=None,
-        help="Manually-supplied MFA/SMS code (e.g. relayed from the Telegram "
-             "bot for a repository_dispatch-triggered retry). Falls back to "
-             "ROBINHOOD_MFA_CODE env var, then to TOTP auto-generation."
+        help="Manually-supplied MFA/SMS code (e.g. via a repository_dispatch "
+             "client_payload, or a manual GitHub Actions workflow_dispatch "
+             "input). Falls back to ROBINHOOD_MFA_CODE env var, then to TOTP "
+             "auto-generation."
     )
     args = parser.parse_args()
     mfa_code = args.mfa_code or os.environ.get('ROBINHOOD_MFA_CODE')
@@ -282,8 +339,9 @@ def main():
         print("ERROR: Robinhood connection failed.")
         hint = "connector.connect() returned False — check credentials or MFA challenge"
         if not mfa_code:
-            hint += (". If this is an MFA/SMS challenge, reply to the Telegram bot with "
-                     "/refresh <code> to retry with a manual code.")
+            hint += (". If this is an MFA/SMS challenge, trigger the Manual Session "
+                     "Refresh workflow (via the ntfy push's Retry Now button, or "
+                     "workflow_dispatch in GitHub Actions) with a manual code.")
         send_failure_email(hint)
         sys.exit(1)
 

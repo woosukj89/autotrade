@@ -592,10 +592,10 @@ def create_robinhood_connector(
         - ROBINHOOD_PICKLE_PATH (optional, directory for session pickle)
 
     Args:
-        mfa_code: Manually-supplied MFA/SMS code, e.g. relayed from a
-            Telegram command when TOTP-based auto-generation isn't
-            available/working. Takes priority over totp_secret when set
-            (see RobinhoodConnector.connect()).
+        mfa_code: Manually-supplied MFA/SMS code, e.g. relayed via a
+            repository_dispatch client_payload when TOTP-based
+            auto-generation isn't available/working. Takes priority over
+            totp_secret when set (see RobinhoodConnector.connect()).
 
     Example:
         # Using environment variables
