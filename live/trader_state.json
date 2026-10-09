@@ -1,61 +1,61 @@
 {
-  "bear_score": 31.504635517612122,
+  "bear_score": 29.657576638510747,
   "allocation": [
     1.0,
     0.0
   ],
   "risk_level": "LOW",
   "positions": {
-    "MU": {
-      "shares": 14.0,
-      "avg_cost": 1035.42
+    "NVDA": {
+      "shares": 67.0,
+      "avg_cost": 229.34
+    },
+    "AMAT": {
+      "shares": 30.0,
+      "avg_cost": 506.85
+    },
+    "ANET": {
+      "shares": 71.0,
+      "avg_cost": 216.61
     },
     "LRCX": {
       "shares": 48.0,
-      "avg_cost": 320.74
-    },
-    "NVDA": {
-      "shares": 67.0,
-      "avg_cost": 230.57
-    },
-    "ANET": {
-      "shares": 73.0,
-      "avg_cost": 210.85
-    },
-    "GOOG": {
-      "shares": 39.0,
-      "avg_cost": 344.87
+      "avg_cost": 318.83
     },
     "GOOGL": {
       "shares": 39.0,
-      "avg_cost": 348.3
+      "avg_cost": 351.63
+    },
+    "GOOG": {
+      "shares": 39.0,
+      "avg_cost": 347.89
+    },
+    "AMZN": {
+      "shares": 50.0,
+      "avg_cost": 262.48
     },
     "META": {
       "shares": 18.0,
-      "avg_cost": 720.84
-    },
-    "AMZN": {
-      "shares": 51.0,
-      "avg_cost": 254.12
+      "avg_cost": 718.6
     },
     "EXPE": {
       "shares": 48.0,
-      "avg_cost": 270.12
-    },
-    "WSM": {
-      "shares": 52.0,
-      "avg_cost": 238.91
+      "avg_cost": 274.26
     },
     "CAT": {
       "shares": 15.0,
-      "avg_cost": 796.17
+      "avg_cost": 800.33
+    },
+    "WSM": {
+      "shares": 52.0,
+      "avg_cost": 241.75
     },
     "ISRG": {
       "shares": 28.0,
-      "avg_cost": 415.46
+      "avg_cost": 424.12
     }
   },
-  "timestamp": "2026-10-08T20:36:06.196273",
+  "timestamp": "2026-10-09T20:03:50.338626",
   "last_rebalance": "2026-09-30T19:56:00.514554",
-  "portfolio_value": 115894.48917760001
+  "portfolio_value": 116695.82309960002
 }
