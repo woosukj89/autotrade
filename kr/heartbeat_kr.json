@@ -1,5 +1,6 @@
 ﻿{
     "date":  "2026-10-23",
-    "status":  "success",
-    "timestamp":  "2026-10-23T23:08:19.2571873+09:00"
+    "status":  "failed",
+    "timestamp":  "2026-10-23T23:08:23.8765546+09:00",
+    "error":  "From https://github.com/woosukj89/autotrade"
 }
