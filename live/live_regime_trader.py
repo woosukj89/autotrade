@@ -978,6 +978,7 @@ class LiveRegimeTrader:
             factor_scores=self._factor_scores if self._factor_scores else None,
             session_failed=session_failed,
             previous_portfolio_value=previous_portfolio_value,
+            equity_previous_close=account.equity_previous_close if account is not None else None,
             strategy_type="regime_adaptive",
             macro_metrics=self._macro_metrics,
             bear_magnitude_pct=self._bear_magnitude_pct,
@@ -1050,45 +1051,86 @@ class LiveRegimeTrader:
             time_to_correction=report.time_to_correction,
         ))
 
-        # Manual Trading Guide Section
-        lines.append("-" * 70)
-        lines.append("MANUAL TRADING GUIDE")
-        lines.append("-" * 70)
         if self.available_cash:
+            # Manual Trading Guide Section - for the separate, non-API
+            # manual account (e.g. Merrill): recompute what the strategy's
+            # target weights scale to against a manually-provided cash
+            # figure, since there's no real brokerage API to query actual
+            # holdings from. Unchanged from before.
+            lines.append("-" * 70)
+            lines.append("MANUAL TRADING GUIDE")
+            lines.append("-" * 70)
             lines.append(f"Available Cash: ${manual_cash:,.2f}")
+            lines.append(f"Number of Positions: {len(positions_data)}")
+            lines.append("")
+
+            total_scaled = sum(p['scaled_value'] for p in positions_data)
+
+            lines.append(f"{'Ticker':<6} {'Weight':>8} {'Price':>10} {'Shares':>8} {'Amount':>12}")
+            lines.append("-" * 46)
+
+            for pos in positions_data:
+                lines.append(
+                    f"{pos['ticker']:<6} "
+                    f"{pos['weight_pct']:>7.1f}% "
+                    f"${pos['price']:>8.2f} "
+                    f"{pos['scaled_shares']:>8} "
+                    f"${pos['scaled_value']:>10,.2f}"
+                )
+
+            lines.append("-" * 46)
+            lines.append(f"{'TOTAL':<6} {'100.0%':>8} {'':<10} {'':<8} ${total_scaled:>10,.2f}")
+            lines.append("")
         else:
-            lines.append(f"Portfolio Value: ${manual_cash:,.2f}")
-        lines.append(f"Number of Positions: {len(positions_data)}")
-        lines.append("")
+            # Real automated account (Robinhood) - show what's ACTUALLY
+            # held, not a recomputed hypothetical "buy this many shares"
+            # table. No --available-cash means this run queried a real
+            # brokerage connector, so report.positions/report.portfolio_value
+            # are already real numbers from that connector - just display
+            # them directly instead of rescaling.
+            lines.append("-" * 70)
+            lines.append("CURRENT POSITIONS (Robinhood - live account, real numbers)")
+            lines.append("-" * 70)
+            lines.append(f"Portfolio Value: ${portfolio_total:,.2f}")
+            if report.equity_previous_close and report.equity_previous_close > 0:
+                day_delta = portfolio_total - report.equity_previous_close
+                day_pct = (day_delta / report.equity_previous_close) * 100
+                sign = "+" if day_delta >= 0 else ""
+                lines.append(f"Return Since Yesterday's Close: {sign}${day_delta:,.2f} ({sign}{day_pct:.2f}%)")
+            lines.append(f"Number of Positions: {len(positions_data)}")
+            lines.append("")
 
-        # Calculate total for scaled positions
-        total_scaled = sum(p['scaled_value'] for p in positions_data)
+            lines.append(f"{'Ticker':<6} {'Shares':>8} {'AvgCost':>10} {'Price':>10} {'Value':>12} {'Weight':>8} {'P&L%':>8}")
+            lines.append("-" * 68)
 
-        # Header
-        lines.append(f"{'Ticker':<6} {'Weight':>8} {'Price':>10} {'Shares':>8} {'Amount':>12}")
-        lines.append("-" * 46)
+            for ticker, pos in sorted(report.positions.items(), key=lambda kv: kv[1]['value'], reverse=True):
+                weight_pct = (pos['value'] / total_invested * 100) if total_invested > 0 else 0
+                price = pos['value'] / pos['shares'] if pos['shares'] > 0 else 0
+                lines.append(
+                    f"{ticker:<6} "
+                    f"{int(pos['shares']):>8} "
+                    f"${pos['avg_cost']:>8.2f} "
+                    f"${price:>8.2f} "
+                    f"${pos['value']:>10,.2f} "
+                    f"{weight_pct:>7.1f}% "
+                    f"{pos['pnl_pct']:>+6.1f}%"
+                )
 
-        for pos in positions_data:
-            lines.append(
-                f"{pos['ticker']:<6} "
-                f"{pos['weight_pct']:>7.1f}% "
-                f"${pos['price']:>8.2f} "
-                f"{pos['scaled_shares']:>8} "
-                f"${pos['scaled_value']:>10,.2f}"
-            )
+            lines.append("-" * 68)
+            lines.append(f"{'TOTAL':<6} {'':<8} {'':<10} {'':<10} ${total_invested:>10,.2f}")
+            lines.append("")
 
-        lines.append("-" * 46)
-        lines.append(f"{'TOTAL':<6} {'100.0%':>8} {'':<10} {'':<8} ${total_scaled:>10,.2f}")
-        lines.append("")
-
-        # Quick Reference (for copy-paste)
-        lines.append("-" * 70)
-        lines.append("QUICK REFERENCE (Copy-Paste Format)")
-        lines.append("-" * 70)
-        lines.append("")
-        for pos in positions_data:
-            lines.append(f"{pos['ticker']}: Buy {pos['scaled_shares']} shares @ ${pos['price']:.2f} = ${pos['scaled_value']:,.2f}")
-        lines.append("")
+        # Quick Reference (for copy-paste) - only meaningful for the manual
+        # account guide; the automated account already owns these shares,
+        # so a "Buy X shares" instruction would be nonsensical there.
+        if self.available_cash:
+            lines.append("-" * 70)
+            lines.append("QUICK REFERENCE (Copy-Paste Format)")
+            lines.append("-" * 70)
+            lines.append("")
+            for pos in positions_data:
+                lines.append(f"{pos['ticker']}: Buy {pos['scaled_shares']} shares @ ${pos['price']:.2f} = ${pos['scaled_value']:,.2f}")
+            lines.append("")
 
         # Actions Taken Section (if any)
         if report.actions:

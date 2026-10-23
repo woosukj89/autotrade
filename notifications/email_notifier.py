@@ -62,6 +62,7 @@ class RebalanceReport:
     factor_scores: Optional[Dict[str, float]] = None  # MacroMom component scores (0-1 each)
     session_failed: bool = False  # True if Robinhood session was unavailable
     previous_portfolio_value: Optional[float] = None  # Last run's total portfolio value
+    equity_previous_close: Optional[float] = None  # broker-reported prior trading day's close equity (real number, not our own last-run snapshot) - use this for "return since yesterday"
 
     # Multi-strategy support (added for the momentum strategy live deployment)
     strategy_type: str = "regime_adaptive"  # "regime_adaptive" | "momentum" - drives conditional rendering
@@ -533,13 +534,31 @@ class EmailNotifier:
             </div>
             """
 
-        # Build portfolio delta HTML
-        if report.previous_portfolio_value and report.previous_portfolio_value > 0 and not report.session_failed:
+        # Build portfolio delta HTML. Prefer the broker's own
+        # equity_previous_close (a real, Robinhood-reported prior-close
+        # equity figure) over previous_portfolio_value (our own locally-saved
+        # snapshot from whenever the last script run happened to execute,
+        # e.g. ~10am ET on a weekday cron - not actually "yesterday's close",
+        # and silently wrong/stale if a run was ever skipped). Only fall back
+        # to the local snapshot when the broker didn't report one.
+        if report.equity_previous_close and report.equity_previous_close > 0 and not report.session_failed:
+            delta = report.portfolio_value - report.equity_previous_close
+            pct = (delta / report.equity_previous_close) * 100
+            sign = "+" if delta >= 0 else ""
+            delta_color = "#28a745" if delta >= 0 else "#dc3545"
+            delta_html = f'<span style="color:{delta_color}; font-weight: bold;">{sign}${abs(delta):,.2f} ({sign}{pct:.2f}%)</span> since yesterday\'s close'
+            delta_row = f"""
+                    <tr>
+                        <td style="padding: 5px 0;"><strong>Return since yesterday:</strong></td>
+                        <td style="padding: 5px 0; text-align: right;">{delta_html}</td>
+                    </tr>
+            """
+        elif report.previous_portfolio_value and report.previous_portfolio_value > 0 and not report.session_failed:
             delta = report.portfolio_value - report.previous_portfolio_value
             pct = (delta / report.previous_portfolio_value) * 100
             sign = "+" if delta >= 0 else ""
             delta_color = "#28a745" if delta >= 0 else "#dc3545"
-            delta_html = f'<span style="color:{delta_color}; font-weight: bold;">{sign}${abs(delta):,.2f} ({sign}{pct:.2f}%)</span> vs last run'
+            delta_html = f'<span style="color:{delta_color}; font-weight: bold;">{sign}${abs(delta):,.2f} ({sign}{pct:.2f}%)</span> vs last run (broker previous-close unavailable)'
             delta_row = f"""
                     <tr>
                         <td style="padding: 5px 0;"><strong>Change since last run:</strong></td>

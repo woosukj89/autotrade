@@ -72,6 +72,7 @@ class AccountInfo:
     equity: float
     margin_used: float = 0.0
     day_trades_remaining: int = 3  # PDT rule
+    equity_previous_close: Optional[float] = None  # broker-reported prior trading day's close equity, for a real (not locally-estimated) day-over-day return
 
 
 @dataclass

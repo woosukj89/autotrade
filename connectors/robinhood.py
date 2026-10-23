@@ -178,6 +178,8 @@ class RobinhoodConnector(ExchangeConnector):
         cash = float(portfolio.get('withdrawable_amount', 0))
         buying_power = float(profile.get('buying_power', 0))
         portfolio_value = float(portfolio.get('equity', 0))
+        equity_previous_close_raw = portfolio.get('equity_previous_close')
+        equity_previous_close = float(equity_previous_close_raw) if equity_previous_close_raw is not None else None
 
         return AccountInfo(
             account_id=profile.get('account_number', 'unknown'),
@@ -186,6 +188,7 @@ class RobinhoodConnector(ExchangeConnector):
             portfolio_value=portfolio_value,
             equity=portfolio_value,
             margin_used=float(profile.get('margin_balances', {}).get('margin_limit', 0)) if profile.get('margin_balances') else 0,
+            equity_previous_close=equity_previous_close,
         )
 
     def get_positions(self) -> List[Position]:
