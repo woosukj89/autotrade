@@ -54,7 +54,12 @@ jobs:
           detail = f"No heartbeat file found at {path} at all."
 
           if os.path.exists(path):
-              with open(path, encoding="utf-8") as f:
+              # utf-8-sig, not utf-8: PowerShell's `Set-Content -Encoding
+              # utf8` (used by kr/run_scheduled_kr.ps1) writes a BOM, which
+              # plain utf-8 decoding rejects. utf-8-sig strips a BOM if
+              # present and is a no-op if there isn't one, so it's safe
+              # either way.
+              with open(path, encoding="utf-8-sig") as f:
                   hb = json.load(f)
               hb_date = hb.get("date")
               hb_status = hb.get("status")
