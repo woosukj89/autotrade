@@ -55,7 +55,15 @@ function Write-AndPushHeartbeat {
     # gets lost. origin/main accumulates new commits daily from the US-side
     # cron jobs, so a plain `git push` here would otherwise be rejected as
     # non-fast-forward almost every day (confirmed happened on first test).
-    git pull --rebase --autostash origin main 2>&1 | Out-Null
+    # No `2>&1` / pipe here on purpose - redirecting a native command's
+    # stderr through the pipeline is a documented PowerShell 5.1 trap
+    # (git's own normal "From <url>" fetch progress line goes to stderr
+    # and gets wrapped as a NativeCommandError, corrupting $LASTEXITCODE
+    # even on a real success - confirmed happening here on the first two
+    # attempts, each time on a pull/push that had actually succeeded).
+    # Checking $LASTEXITCODE right after the bare command is the reliable
+    # way to read a native command's real exit code in this PowerShell version.
+    git pull --rebase --autostash origin main
     if ($LASTEXITCODE -ne 0) {
         throw "git pull --rebase failed while pushing the heartbeat - manual intervention needed, check for a real conflict."
     }
