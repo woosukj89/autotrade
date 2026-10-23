@@ -1,0 +1,109 @@
+name: KR Scheduled Job Watchdog
+
+# This does NOT run the KR strategy itself - Kiwoom's API key is IP-locked
+# to the home network, so the actual job runs from Task Scheduler on that
+# machine (see kr/run_scheduled_kr.ps1), not from a GitHub Actions cloud
+# runner. This workflow's only job is to notice when that home-machine run
+# didn't happen (failed to wake, crashed before emailing, network down,
+# etc.) and email an alert - because that detection has to live somewhere
+# OTHER than the possibly-asleep machine itself. The home-machine script
+# pushes kr/heartbeat_kr.json after each attempt (success or failure); this
+# workflow checks whether today's heartbeat actually arrived.
+
+on:
+  schedule:
+    # 17:00 KST (08:00 UTC) on weekdays - about an hour after the expected
+    # 16:00 KST home-machine run, to give it time to wake/run/push.
+    - cron: '0 8 * * 1-5'
+  workflow_dispatch: # Manual trigger for testing
+
+permissions:
+  contents: read
+
+jobs:
+  check-heartbeat:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install email dependencies
+        run: pip install python-dotenv
+
+      - name: Check today's heartbeat
+        id: check
+        run: |
+          python - <<'EOF'
+          import json
+          import os
+          import sys
+          from datetime import datetime, timezone, timedelta
+
+          KST = timezone(timedelta(hours=9))
+          today = datetime.now(KST).strftime("%Y-%m-%d")
+
+          path = "kr/heartbeat_kr.json"
+          status = "missing"
+          detail = f"No heartbeat file found at {path} at all."
+
+          if os.path.exists(path):
+              with open(path, encoding="utf-8") as f:
+                  hb = json.load(f)
+              hb_date = hb.get("date")
+              hb_status = hb.get("status")
+              if hb_date != today:
+                  status = "stale"
+                  detail = f"Heartbeat exists but is dated {hb_date}, not today ({today}) - the scheduled job did not run today."
+              elif hb_status != "success":
+                  status = "failed"
+                  detail = f"Heartbeat for {today} shows status={hb_status!r}: {hb.get('error', 'no error detail')}"
+              else:
+                  status = "ok"
+                  detail = f"Heartbeat for {today} shows success."
+
+          print(f"status={status}")
+          print(f"detail={detail}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"status={status}\n")
+              # GITHUB_OUTPUT doesn't handle multiline cleanly without a
+              # delimiter - detail is short/single-line here by construction.
+              f.write(f"detail={detail}\n")
+          EOF
+
+      - name: Send alert email if not OK
+        if: steps.check.outputs.status != 'ok'
+        env:
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: |
+          python - <<EOF
+          import os
+          import sys
+          sys.path.insert(0, os.getcwd())
+          from notifications import create_email_notifier
+
+          notifier = create_email_notifier("joshuaJang89@gmail.com")
+          if not notifier.is_configured():
+              print("SMTP not configured in GH Actions secrets - cannot send watchdog alert.")
+              sys.exit(1)
+
+          status = "${{ steps.check.outputs.status }}"
+          detail = "${{ steps.check.outputs.detail }}"
+          subject = f"[AutoTrade] KR scheduled job watchdog: {status.upper()}"
+          message = (
+              f"The KR strategy's home-machine scheduled job did not report a clean "
+              f"success for today.\n\nStatus: {status}\nDetail: {detail}\n\n"
+              f"This check runs from GitHub Actions specifically because it can "
+              f"catch the 'the laptop never woke up' case, which nothing running "
+              f"on that laptop could ever detect on its own."
+          )
+          notifier.send_alert(subject, message)
+          EOF
