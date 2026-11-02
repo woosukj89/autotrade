@@ -1,61 +1,61 @@
 {
-  "bear_score": 44.72207893511139,
+  "bear_score": 54.44109951497147,
   "allocation": [
     1.0,
     0.0
   ],
-  "risk_level": "WATCH",
+  "risk_level": "CAUTION",
   "positions": {
-    "MU": {
-      "shares": 14.0,
-      "avg_cost": 934.26
-    },
-    "NVDA": {
-      "shares": 62.0,
-      "avg_cost": 213.72
+    "ANET": {
+      "shares": 75.0,
+      "avg_cost": 164.13
     },
     "LRCX": {
-      "shares": 52.0,
-      "avg_cost": 254.39
+      "shares": 54.0,
+      "avg_cost": 227.66
     },
-    "ANET": {
-      "shares": 72.0,
-      "avg_cost": 184.25
+    "NVDA": {
+      "shares": 61.0,
+      "avg_cost": 202.2
+    },
+    "AMAT": {
+      "shares": 33.0,
+      "avg_cost": 374.73
     },
     "META": {
-      "shares": 19.0,
-      "avg_cost": 624.545
-    },
-    "GOOG": {
-      "shares": 41.0,
-      "avg_cost": 282.17
-    },
-    "GOOGL": {
-      "shares": 41.0,
-      "avg_cost": 283.75
-    },
-    "AMZN": {
-      "shares": 46.0,
-      "avg_cost": 244.23
+      "shares": 18.0,
+      "avg_cost": 606.54
     },
     "EXPE": {
-      "shares": 39.0,
-      "avg_cost": 282.72
+      "shares": 35.0,
+      "avg_cost": 299.07
+    },
+    "TT": {
+      "shares": 24.0,
+      "avg_cost": 413.35
     },
     "WSM": {
-      "shares": 41.0,
-      "avg_cost": 259.84
+      "shares": 38.0,
+      "avg_cost": 259.44
     },
-    "CAT": {
-      "shares": 16.0,
-      "avg_cost": 647.25
+    "GOOGL": {
+      "shares": 34.0,
+      "avg_cost": 279.03
+    },
+    "GOOG": {
+      "shares": 34.0,
+      "avg_cost": 278.05
+    },
+    "GS": {
+      "shares": 10.0,
+      "avg_cost": 898.675
     },
     "AXP": {
-      "shares": 31.0,
-      "avg_cost": 323.7
+      "shares": 29.0,
+      "avg_cost": 328.02
     }
   },
-  "timestamp": "2026-10-29T20:08:49.593347",
-  "last_rebalance": "2026-09-30T19:56:00.514554",
-  "portfolio_value": 99527.5210405
+  "timestamp": "2026-11-02T23:03:51.989238",
+  "last_rebalance": "2026-11-02T23:03:51.989174",
+  "portfolio_value": 91529.59262440001
 }
